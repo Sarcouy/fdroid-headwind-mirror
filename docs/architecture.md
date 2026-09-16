@@ -687,7 +687,7 @@ et n'émet aucune écriture vers Headwind.
 | 3 ✅ | Vérifications (sha256, signataire, ABI) | Une divergence de signataire produit une alerte et bloque le paquet |
 | 4 ✅ | Publication d'une version (mode URL directe) | Une nouvelle version apparaît dans Headwind |
 | 5 ❌ | ~~Mode miroir (envoi de l'APK)~~ | Abandonnée : Headwind n'hébergera jamais les APK (§8) |
-| 6 | Rattachement aux configurations + notification | Un appareil de test reçoit la mise à jour |
+| 6 ✅ | Rattachement aux configurations + notification | Un appareil de test reçoit la mise à jour |
 | 7 | Ordonnancement, rapport, supervision | Exécution quotidienne autonome avec rapport exploitable |
 
 Les itérations 1 à 3 n'écrivent rien dans Headwind : elles permettent de valider la lecture du parc et la
@@ -733,9 +733,54 @@ Un `PUT` accepté dont la réponse n'est pas exploitable (`data` absent ou d'une
 comme une création : `_put` ayant déjà levé pour une enveloppe en erreur, l'écriture a bien eu lieu. Seule
 la vérification de cohérence devient impossible. La forme exacte de cette réponse reste à confirmer (§13).
 
-Hors périmètre : `POST /private/applications/version/configurations` (itération 6), l'envoi de fichier
-(itération 5), la notification push. `auto_approve` reste sans effet fonctionnel tant que rien n'est
-rattaché — il ne prendra son sens qu'à l'itération 6.
+Hors périmètre de l'itération 4 : le rattachement aux configurations, traité en 12.2.
+
+### 12.2 Ce que fait exactement l'itération 6
+
+Après la publication, `sync --apply` rattache les versions aux configurations qui installaient déjà
+l'application. Le rattachement ne dépend pas du statut du plan mais d'un seul critère d'état :
+`last_created_version_code > last_pushed_version_code`. La même condition couvre donc ce qui vient d'être
+publié et ce qu'une exécution précédente a laissé sans rattachement — il n'y a pas deux chemins de reprise.
+
+```mermaid
+flowchart TD
+    A[Paquet suivi] --> B{créée mais non rattachée ?}
+    B -- non --> Z[ignoré, aucune lecture]
+    B -- oui --> C{auto_approve ?}
+    C -- non --> S1[IGNORÉ, approbation manuelle attendue]
+    C -- oui --> D[GET versions, retrouver l'id par versionCode]
+    D -- absente --> S2[ÉCHEC]
+    D -- trouvée --> E["GET /applications/version/{id}/configurations"]
+    E --> F{une configuration installe-t-elle l'application ?}
+    F -- non --> S3[IGNORÉ, progression enregistrée quand même]
+    F -- oui --> G[POST /applications/version/configurations]
+    G -- échec --> S4[ÉCHEC]
+    G -- succès --> H[set_version_progress last_pushed_version_code]
+```
+
+Quatre décisions structurantes :
+
+1. **Les liens sont relus bruts et réémis tels quels.** `get_version_configurations` renvoie des `dict`, pas
+   des modèles : le passage par les modèles typés (`extra="ignore"`) supprimerait les champs non déclarés, et
+   convertirait `versionText` — entier côté serveur — en chaîne, ce que sa désérialisation refuse (§5).
+   C'est la seule lecture du client qui échappe volontairement au typage.
+2. **`action` n'est jamais réécrit.** Le mettre à `1` partout installerait l'application sur des
+   configurations qui ne la déployaient pas, et annulerait une désinstallation demandée (`action = 2`).
+   L'héritage `COALESCE` côté serveur (§2.3) l'a déjà positionné à `1` là où il le faut. Seul `notify` est
+   posé par le service, et uniquement sur les entrées qui installent réellement.
+3. **L'identifiant de version est retrouvé par `versionCode`**, jamais repris de la publication : il peut
+   manquer (réponse de création inexploitable) et il n'existe pas du tout quand le rattachement reprend le
+   travail d'une exécution précédente.
+4. **Aucune configuration à rattacher enregistre quand même la progression.** Sans cela le paquet serait
+   signalé en attente à chaque exécution, pour un état pourtant déjà atteint.
+
+`auto_approve: false` laisse la version créée mais non rattachée, signalée à chaque exécution (§7.6).
+L'approbation se fait alors dans l'interface Headwind : aucune commande d'approbation n'est fournie par le
+service, ce qui reste une extension possible.
+
+La notification est **demandée**, jamais constatée : `notify: true` ne déclenche `notifyDevicesOnUpdate` que
+si le service push est configuré sur l'instance (§7.5, et §13 point 4 toujours ouvert). Le rapport dit donc
+« notification demandée » et jamais « appareils notifiés » — l'API ne permet pas d'observer la différence.
 
 ---
 

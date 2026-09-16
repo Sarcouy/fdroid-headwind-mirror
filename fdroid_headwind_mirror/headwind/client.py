@@ -97,11 +97,31 @@ class HeadwindClient:
         except HeadwindApiError:
             return None
 
+    def get_version_configurations(self, version_id: int) -> list[dict[str, Any]]:
+        # Seule lecture rendue brute plutot que typee: l'API exige que ces entrees lui soient
+        # reemises telles quelles. Les passer par les modeles supprimerait les champs qu'ils ne
+        # declarent pas (extra="ignore") et convertirait versionText, entier cote serveur, en
+        # chaine, ce que sa deserialisation refuse.
+        path = f"/private/applications/version/{version_id}/configurations"
+        payload = self._get(path)
+        if not isinstance(payload, list) or any(not isinstance(item, dict) for item in payload):
+            raise HeadwindApiError(ResponseStatus.OK, "liste de configurations attendue", path)
+        return payload
+
+    def link_version_configurations(
+        self, version_id: int, configurations: list[dict[str, Any]]
+    ) -> None:
+        path = "/private/applications/version/configurations"
+        self._post(path, {"applicationVersionId": version_id, "configurations": configurations})
+
     def _get(self, path: str) -> Any:
         return self._send(path, lambda: self._client.get(path))
 
     def _put(self, path: str, body: dict[str, object]) -> Any:
         return self._send(path, lambda: self._client.put(path, json=body))
+
+    def _post(self, path: str, body: dict[str, object]) -> Any:
+        return self._send(path, lambda: self._client.post(path, json=body))
 
     def _send(self, path: str, call: Callable[[], httpx.Response]) -> Any:
         try:

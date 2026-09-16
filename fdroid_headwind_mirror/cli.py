@@ -20,6 +20,7 @@ from fdroid_headwind_mirror.domain.planner import (
     SyncPlan,
     build_plan,
 )
+from fdroid_headwind_mirror.domain.linker import LinkingOutcome, LinkingSummary, link_plan
 from fdroid_headwind_mirror.domain.publisher import (
     PublicationOutcome,
     PublicationSummary,
@@ -141,7 +142,9 @@ def sync(
                 if verify_apk or not dry_run
                 else None
             )
-            publication = None if dry_run else _publish(settings, plan, repository, run_id)
+            publication, linking = (
+                (None, None) if dry_run else _apply(settings, plan, repository, run_id)
+            )
         except HeadwindPermissionError as exc:
             _fail(repository, run_id, "headwind.permission_denied", exc, _PERMISSION_MESSAGE)
         except HeadwindError as exc:
@@ -149,7 +152,11 @@ def sync(
         except FDroidError as exc:
             _fail(repository, run_id, "fdroid.unavailable", exc, f"Depot F-Droid: {exc}")
 
-        errors = plan.rejections + (publication.failed if publication else 0)
+        errors = (
+            plan.rejections
+            + (publication.failed if publication else 0)
+            + (linking.failed if linking else 0)
+        )
         repository.finish_run(
             run_id,
             "OK" if errors == 0 else "WARNING",
@@ -166,9 +173,10 @@ def sync(
         payload["publication"] = (
             publication.model_dump(mode="json") if publication is not None else None
         )
+        payload["linking"] = linking.model_dump(mode="json") if linking is not None else None
         typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
-        _render_plan(plan, verification, publication)
+        _render_plan(plan, verification, publication, linking)
 
     raise typer.Exit(code=1 if errors else 0)
 
@@ -211,15 +219,16 @@ def _verify_apks(
         return verify_plan(plan, client, store, repository, run_id=run_id)
 
 
-def _publish(
+def _apply(
     settings: Settings, plan: SyncPlan, repository: StateRepository, run_id: int
-) -> PublicationSummary:
+) -> tuple[PublicationSummary, LinkingSummary]:
     with HeadwindClient(
         base_url=settings.headwind_url,
         token=settings.headwind_token,
         timeout=settings.request_timeout,
     ) as client:
-        return publish_plan(plan, client, repository, run_id=run_id)
+        publication = publish_plan(plan, client, repository, run_id=run_id)
+        return publication, link_plan(plan, client, repository, run_id=run_id)
 
 
 def _refresh_index(
@@ -255,6 +264,7 @@ def _render_plan(
     plan: SyncPlan,
     verification: VerificationSummary | None = None,
     publication: PublicationSummary | None = None,
+    linking: LinkingSummary | None = None,
 ) -> None:
     typer.echo(
         f"Index F-Droid: {plan.index_package_count} paquet(s) suivi(s),"
@@ -287,6 +297,8 @@ def _render_plan(
         typer.secho("Aucune ecriture effectuee (--dry-run)", fg=typer.colors.BLUE)
         return
     _render_publication(publication)
+    if linking is not None:
+        _render_linking(linking)
 
 
 def _render_publication(publication: PublicationSummary) -> None:
@@ -308,6 +320,42 @@ def _render_publication(publication: PublicationSummary) -> None:
             " celles marquees autoUpdate deploient la nouvelle version sans autre action.",
             fg=typer.colors.YELLOW,
         )
+
+
+def _render_linking(linking: LinkingSummary) -> None:
+    if not linking.entries:
+        return
+    typer.echo("")
+    for entry in linking.entries:
+        typer.secho(
+            f"  {entry.pkg}: {entry.outcome.value.lower()} - {entry.detail}",
+            fg=_linking_colour(entry.outcome),
+        )
+    typer.secho(
+        f"\n{linking.linked} version(s) rattachee(s) a {linking.configurations}"
+        f" configuration(s), {linking.skipped} ignoree(s), {linking.failed} en echec",
+        fg=typer.colors.RED if linking.failed else typer.colors.GREEN,
+    )
+    if linking.linked:
+        typer.secho(
+            "Notification demandee: les appareils ne la recevront que si le service push est"
+            " configure, sinon a leur prochaine synchronisation.",
+            fg=typer.colors.YELLOW,
+        )
+    awaiting = linking.awaiting_approval
+    if awaiting:
+        typer.secho(
+            f"En attente d'approbation manuelle (auto_approve: false): {', '.join(awaiting)}",
+            fg=typer.colors.YELLOW,
+        )
+
+
+def _linking_colour(outcome: LinkingOutcome) -> str:
+    if outcome is LinkingOutcome.LINKED:
+        return typer.colors.GREEN
+    if outcome is LinkingOutcome.FAILED:
+        return typer.colors.RED
+    return typer.colors.YELLOW
 
 
 def _publication_colour(outcome: PublicationOutcome) -> str:
