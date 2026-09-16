@@ -17,7 +17,7 @@ version candidate font l'objet d'une note séparée, [docs/iteration-2.md](docs/
 | 3 | Vérifications (sha256, signataire, ABI) | ✅ livrée |
 | 4 | Publication d'une version (mode URL directe) | ✅ livrée |
 | 5 | ~~Mode miroir (envoi de l'APK)~~ | ❌ abandonnée |
-| 6 | Rattachement aux configurations et notification | à faire |
+| 6 | Rattachement aux configurations et notification | ✅ livrée |
 | 7 | Ordonnancement, rapport, supervision | à faire |
 
 L'itération 5 est abandonnée : **Headwind n'hébergera jamais les APK.** Les versions publiées pointent
@@ -25,7 +25,8 @@ vers le dépôt F-Droid et les appareils les téléchargent eux-mêmes, ce qui s
 `f-droid.org`. Le service ne télécharge les APK que pour en vérifier l'empreinte avant publication.
 
 `sync --apply` est la seule commande qui écrit dans Headwind. Elle n'a jamais été exécutée contre une
-instance réelle : la publication n'est validée que face à un serveur simulé.
+instance réelle : publication et rattachement ne sont validés que face à un serveur simulé, et aucun
+appareil n'a reçu de mise à jour par ce chemin.
 
 ## Installation
 
@@ -83,7 +84,7 @@ packages:
 | --- | --- | --- |
 | `repo.url` | globale | Dépôt F-Droid par défaut |
 | `repo.fingerprint` | globale | Empreinte du dépôt — déclarée mais **pas encore vérifiée**, voir plus bas |
-| `auto_approve` | défaut ou paquet | Rattacher automatiquement la nouvelle version aux configurations |
+| `auto_approve` | défaut ou paquet | Rattacher automatiquement la nouvelle version aux configurations — `false` par défaut |
 | `target_abis` | défaut ou paquet | ABI à publier, par ordre de préférence — défaut `[arm64-v8a]` |
 | `blocked_anti_features` | défaut ou paquet | Anti-fonctionnalités écartant une version — vide par défaut |
 | `paused` | paquet | Suspendre le suivi sans retirer la déclaration |
@@ -245,6 +246,45 @@ Quatre garde-fous encadrent l'écriture :
 > serveur simulé. La valeur de `autoUpdate` sur les configurations du parc reste inconnue : tant qu'elle
 > n'est pas vérifiée, considérer qu'une création de version peut déclencher un déploiement immédiat. Premier
 > usage recommandé : une instance de recette, un seul paquet sans conséquence.
+
+### Rattachement aux configurations
+
+Une fois la version créée, `--apply` la rattache aux configurations qui installaient déjà l'application,
+à condition que le paquet porte `auto_approve: true`.
+
+```
+  org.videolan.vlc: linked - 2 configuration(s) rattachee(s), notification demandee
+
+1 version(s) rattachee(s) a 2 configuration(s), 0 ignoree(s), 0 en echec
+Notification demandee: les appareils ne la recevront que si le service push est configure, sinon a
+leur prochaine synchronisation.
+```
+
+Le rattachement ne dépend pas du résultat du plan mais d'un seul critère d'état : une version créée et non
+encore rattachée. La même règle traite donc ce qui vient d'être publié et ce qu'une exécution précédente a
+laissé en suspens — un paquet dont Headwind n'avait pas adopté la version est rattrapé au passage suivant.
+
+| Résultat | Signification |
+| --- | --- |
+| `linked` | Les configurations pointent sur la nouvelle version, notification demandée |
+| `skipped` | `auto_approve: false`, ou aucune configuration n'installe cette application |
+| `failed` | Version introuvable dans Headwind, liens illisibles, ou rattachement refusé |
+
+Trois garanties encadrent l'écriture :
+
+- **Les entrées sont réémises telles quelles.** L'API exige que chaque lien lui revienne intact ; le service
+  les lit donc sans les typer, pour ne perdre aucun champ et ne pas convertir `versionText`, entier côté
+  serveur, en chaîne.
+- **`action` n'est jamais réécrit.** Le forcer à « installer » déploierait l'application sur des
+  configurations qui ne la voulaient pas et annulerait une désinstallation demandée. Seul `notify` est posé,
+  et uniquement là où l'application est effectivement installée.
+- **La notification est demandée, pas constatée.** `notify: true` ne déclenche un push que si le service de
+  notification est configuré sur l'instance ; sinon les appareils prennent la mise à jour à leur prochaine
+  synchronisation. L'API ne permet pas de distinguer les deux cas.
+
+Avec `auto_approve: false` — le défaut — la version est créée mais laissée non rattachée, et signalée à
+chaque exécution. L'approbation se fait alors dans l'interface Headwind : le service ne fournit pas de
+commande d'approbation.
 
 ### Chaîne de confiance et limite connue
 

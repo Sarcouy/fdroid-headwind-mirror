@@ -83,18 +83,32 @@ def fdroid_handler(request: httpx.Request) -> httpx.Response:
 
 
 HEADWIND_CALLS: list[tuple[str, str]] = []
+CREATED_VERSIONS: list[dict[str, Any]] = []
 
 
 def headwind_handler(request: httpx.Request) -> httpx.Response:
     path = request.url.path
     HEADWIND_CALLS.append((request.method, path))
     if request.method == "PUT" and path.endswith("/applications/versions"):
-        return envelope({**json.loads(request.content), "id": 700})
+        created = {**json.loads(request.content), "id": 700}
+        CREATED_VERSIONS.append(created)
+        return envelope(created)
+    if request.method == "POST" and path.endswith("/applications/version/configurations"):
+        return envelope(None)
+    return headwind_read(path)
+
+
+def headwind_read(path: str) -> httpx.Response:
+    if path.endswith("/applications/version/700/configurations"):
+        return envelope(
+            [{"configurationId": 3, "applicationId": 7, "action": 1, "versionText": 700}]
+        )
     if path.endswith("/applications/search"):
         return envelope(APPLICATIONS)
     for app_id, versions in VERSIONS.items():
         if path.endswith(f"/applications/{app_id}/versions"):
-            return envelope(versions)
+            extra = [item for item in CREATED_VERSIONS if item["applicationId"] == app_id]
+            return envelope(versions + extra)
     for application in APPLICATIONS:
         if path.endswith(f"/applications/{application['id']}"):
             return envelope({**application, "latestVersion": 700})
@@ -104,6 +118,7 @@ def headwind_handler(request: httpx.Request) -> httpx.Response:
 @pytest.fixture(name="workspace")
 def fixture_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     HEADWIND_CALLS.clear()
+    CREATED_VERSIONS.clear()
     (tmp_path / "packages.yaml").write_text(PACKAGES, encoding="utf-8")
     monkeypatch.setenv("FHM_HEADWIND_URL", "https://mdm.example.org")
     monkeypatch.setenv("FHM_HEADWIND_TOKEN", "token")
@@ -287,3 +302,39 @@ def test_cache_holds_only_tracked_packages(workspace: Path) -> None:
         "org.videolan.vlc",
     ]
     assert "com.shatteredpixel.shatteredpixeldungeon" not in cached["payload"]["packages"]
+
+
+def test_apply_links_the_version_when_auto_approve_is_set(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (workspace / "packages.yaml").write_text(
+        PACKAGES.replace(
+            "  - pkg: org.videolan.vlc\n", "  - pkg: org.videolan.vlc\n    auto_approve: true\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli, "_verify_apks", fake_verification)
+
+    result = runner.invoke(cli.app, ["sync", "--apply"])
+
+    assert [path for method, path in HEADWIND_CALLS if method == "POST"] == [
+        "/rest/private/applications/version/configurations"
+    ]
+    assert "1 version(s) rattachee(s)" in result.stdout
+    with StateRepository(workspace / "state.db") as repository:
+        tracked = repository.get_tracked_package("org.videolan.vlc")
+        assert tracked is not None
+        assert tracked.last_pushed_version_code == 13070106
+        assert tracked.awaiting_approval is False
+
+
+@pytest.mark.usefixtures("workspace")
+def test_apply_leaves_the_version_unlinked_without_auto_approve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cli, "_verify_apks", fake_verification)
+
+    result = runner.invoke(cli.app, ["sync", "--apply"])
+
+    assert not [path for method, path in HEADWIND_CALLS if method == "POST"]
+    assert "approbation manuelle requise" in result.stdout
