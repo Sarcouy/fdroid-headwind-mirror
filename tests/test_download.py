@@ -162,7 +162,7 @@ def test_no_partial_file_is_left_behind(tmp_path: Path) -> None:
         with pytest.raises(FDroidIntegrityError):
             fetch_apk(client, store, request(size=None))
 
-    assert list((tmp_path / "org.example.app").glob("*")) == []
+    assert not list((tmp_path / "org.example.app").glob("*"))
 
 
 def test_store_detects_a_file_with_the_wrong_hash(tmp_path: Path) -> None:
