@@ -32,6 +32,30 @@ class TrackedPackage(BaseModel):
         return pushed is None or self.last_created_version_code > pushed
 
 
+class SyncRun(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    started_at: str
+    finished_at: str | None
+    status: str
+    packages_checked: int
+    versions_created: int
+    errors: int
+
+
+class SyncEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    run_id: int
+    pkg: str | None
+    level: str
+    code: str
+    message: str
+    created_at: str
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
@@ -207,6 +231,38 @@ class StateRepository:
                 " created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (run_id, pkg, level, code, message, payload_json, _now()),
             )
+
+    def list_runs(self, limit: int = 5) -> list[SyncRun]:
+        rows = self._connection.execute(
+            "SELECT id, started_at, finished_at, status, packages_checked, versions_created,"
+            " errors FROM sync_run ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [SyncRun(**dict(row)) for row in rows]
+
+    def list_events(self, run_id: int, level: str | None = None) -> list[SyncEvent]:
+        query = (
+            "SELECT id, run_id, pkg, level, code, message, created_at"
+            " FROM sync_event WHERE run_id = ?"
+        )
+        values: list[object] = [run_id]
+        if level is not None:
+            query += " AND level = ?"
+            values.append(level)
+        rows = self._connection.execute(f"{query} ORDER BY id", tuple(values)).fetchall()
+        return [SyncEvent(**dict(row)) for row in rows]
+
+    def prune_runs(self, before: str) -> tuple[int, int]:
+        events = self._connection.execute(
+            "SELECT COUNT(*) AS total FROM sync_event WHERE run_id IN"
+            " (SELECT id FROM sync_run WHERE started_at < ?)",
+            (before,),
+        ).fetchone()["total"]
+        with self._connection:
+            cursor = self._connection.execute(
+                "DELETE FROM sync_run WHERE started_at < ?", (before,)
+            )
+        return cursor.rowcount, int(events)
 
     def count_events(self, run_id: int) -> int:
         row = self._connection.execute(

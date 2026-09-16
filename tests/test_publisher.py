@@ -12,7 +12,7 @@ from fdroid_headwind_mirror.domain.planner import ArtifactPlan, PackagePlan, Pla
 from fdroid_headwind_mirror.domain.publisher import PublicationOutcome, publish_plan
 from fdroid_headwind_mirror.headwind.client import HeadwindClient
 from fdroid_headwind_mirror.state.repository import StateRepository
-from tests.conftest import envelope
+from tests.conftest import envelope, track_package
 
 APPLICATION_PATH = re.compile(r"/applications/(\d+)$")
 CREATED_ID = 101
@@ -111,13 +111,7 @@ def plan_of(*packages: PackagePlan) -> SyncPlan:
 
 @pytest.fixture(name="tracked")
 def fixture_tracked(repository: StateRepository) -> StateRepository:
-    repository.upsert_tracked_package(
-        "org.videolan.vlc",
-        repo_url="https://f-droid.org/repo",
-        auto_approve=False,
-        paused=False,
-        hmdm_application_id=7,
-    )
+    track_package(repository)
     return repository
 
 

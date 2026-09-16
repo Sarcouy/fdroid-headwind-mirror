@@ -45,6 +45,22 @@ def application_payload(
     }
 
 
+def track_package(
+    repository: StateRepository,
+    pkg: str = "org.videolan.vlc",
+    *,
+    auto_approve: bool = False,
+    application_id: int | None = 7,
+) -> None:
+    repository.upsert_tracked_package(
+        pkg,
+        repo_url="https://f-droid.org/repo",
+        auto_approve=auto_approve,
+        paused=False,
+        hmdm_application_id=application_id,
+    )
+
+
 @pytest.fixture(name="make_client")
 def fixture_make_client() -> Callable[[Handler], HeadwindClient]:
     def factory(handler: Handler) -> HeadwindClient:

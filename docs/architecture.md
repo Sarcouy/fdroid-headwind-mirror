@@ -688,7 +688,7 @@ et n'émet aucune écriture vers Headwind.
 | 4 ✅ | Publication d'une version (mode URL directe) | Une nouvelle version apparaît dans Headwind |
 | 5 ❌ | ~~Mode miroir (envoi de l'APK)~~ | Abandonnée : Headwind n'hébergera jamais les APK (§8) |
 | 6 ✅ | Rattachement aux configurations + notification | Un appareil de test reçoit la mise à jour |
-| 7 | Ordonnancement, rapport, supervision | Exécution quotidienne autonome avec rapport exploitable |
+| 7 ✅ | Ordonnancement, rapport, supervision | Exécution quotidienne autonome avec rapport exploitable |
 
 Les itérations 1 à 3 n'écrivent rien dans Headwind : elles permettent de valider la lecture du parc et la
 résolution des versions sans aucun risque. L'itération 4 est le premier point où une validation sur une
@@ -781,6 +781,35 @@ service, ce qui reste une extension possible.
 La notification est **demandée**, jamais constatée : `notify: true` ne déclenche `notifyDevicesOnUpdate` que
 si le service push est configuré sur l'instance (§7.5, et §13 point 4 toujours ouvert). Le rapport dit donc
 « notification demandée » et jamais « appareils notifiés » — l'API ne permet pas d'observer la différence.
+
+### 12.3 Ce que fait exactement l'itération 7
+
+Sous un timer, personne ne lit la sortie standard. « Rapport exploitable » signifie donc qu'une exécution
+dégradée est **détectable sans intervention humaine**, par deux canaux distincts :
+
+| Canal | Contenu | Destinataire |
+| --- | --- | --- |
+| Code de sortie | `0` sain, `1` erreurs, `2` configuration ou service injoignable | l'ordonnanceur |
+| Journal JSON sur stderr | une ligne par erreur, puis une synthèse `sync.finished` | `journalctl`, collecteur de logs |
+| `fhm report` | état durable : dernière exécution, erreurs, paquets en attente | un opérateur |
+
+Quatre décisions structurantes :
+
+1. **Le journal est émis à la frontière CLI**, jamais depuis `domain/`. Les couches ne se connaissent que
+   dans un sens (§10) ; le domaine enregistre déjà ses événements en base via `record_event`, et la CLI les
+   relit en fin d'exécution pour les émettre. Aucune couche métier ne reçoit de logger.
+2. **Le journal part sur stderr, le rapport sur stdout.** `sync --json` et le journal sont actifs en même
+   temps : mélanger les deux flux rendrait le premier inanalysable.
+3. **La purge est une commande, pas un effet de bord.** `sync_event` croît sans limite sous un timer
+   quotidien, mais une exécution planifiée qui supprimerait silencieusement de l'historique serait pire que
+   le problème. `fhm prune --days N` demande confirmation, sauf `--yes`.
+4. **Aucun ordonnanceur embarqué** (§10). Des unités systemd d'exemple sont fournies dans `deploy/`, avec le
+   jeton en `EnvironmentFile`, un `WorkingDirectory` explicite — les chemins par défaut sont relatifs — et un
+   `RandomizedDelaySec` pour ne pas concentrer la charge sur le dépôt F-Droid.
+
+Hors périmètre : la vérification que les URL publiées répondent encore. F-Droid déplace les anciennes
+versions de `/repo` vers `/archive`, donc une URL publiée peut finir par ne plus répondre — mais contrôler
+cela demande une capacité réseau nouvelle, qui relève d'une itération à part.
 
 ---
 

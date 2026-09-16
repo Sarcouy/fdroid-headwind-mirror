@@ -338,3 +338,29 @@ def test_apply_leaves_the_version_unlinked_without_auto_approve(
 
     assert not [path for method, path in HEADWIND_CALLS if method == "POST"]
     assert "approbation manuelle requise" in result.stdout
+
+
+@pytest.mark.usefixtures("workspace")
+def test_the_structured_log_goes_to_stderr_without_touching_stdout() -> None:
+    result = runner.invoke(cli.app, ["sync", "--json"])
+
+    assert json.loads(result.stdout)["packages"]
+    lines = [json.loads(line) for line in result.stderr.splitlines() if line.strip()]
+    summary = [line for line in lines if line["event"] == "sync.finished"]
+    assert len(summary) == 1
+    assert summary[0]["rejections"] == 1
+    assert summary[0]["run_id"] >= 1
+    assert all("level" in line and "timestamp" in line for line in lines)
+
+
+@pytest.mark.usefixtures("workspace")
+def test_errors_are_journalled_individually() -> None:
+    result = runner.invoke(cli.app, ["sync"])
+
+    errors = [
+        json.loads(line)
+        for line in result.stderr.splitlines()
+        if line.strip() and json.loads(line)["level"] == "error"
+    ]
+    assert [entry["event"] for entry in errors] == ["fdroid.unresolved"]
+    assert errors[0]["pkg"] == "com.pavelsof.wormhole"
