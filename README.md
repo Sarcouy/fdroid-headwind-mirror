@@ -1,5 +1,7 @@
 # fdroid-headwind-mirror
 
+[![CI](https://github.com/Sarcouy/fdroid-headwind-mirror/actions/workflows/ci.yml/badge.svg)](https://github.com/Sarcouy/fdroid-headwind-mirror/actions/workflows/ci.yml)
+
 Service de synchronisation des mises à jour d'applications F-Droid vers [Headwind MDM](https://h-mdm.com/).
 
 La conception complète est décrite dans [docs/architecture.md](docs/architecture.md). Le détail de
