@@ -1,0 +1,59 @@
+[project]
+name = "fdroid-headwind-mirror"
+version = "0.1.0"
+description = "Synchronise les mises à jour d'applications F-Droid vers Headwind MDM"
+requires-python = ">=3.12,<4.0"
+dependencies = [
+    "httpx (>=0.28,<0.29)",
+    "pydantic (>=2.10,<3.0)",
+    "pydantic-settings (>=2.7,<3.0)",
+    "typer (>=0.15,<0.16)",
+    # click 8.2 supprime CliRunner(mix_stderr=...), dont depend la separation
+    # stdout/stderr verifiee par les tests de la CLI.
+    "click (>=8.1,<8.2)",
+    "structlog (>=24.4,<25.0)",
+    "pyyaml (>=6.0,<7.0)",
+]
+
+[project.scripts]
+fhm = "fdroid_headwind_mirror.cli:app"
+
+[tool.poetry]
+packages = [{ include = "fdroid_headwind_mirror" }]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3"
+pylint = "^3.3"
+black = "^24.10"
+types-pyyaml = "^6.0"
+
+[build-system]
+requires = ["poetry-core>=2.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.pylint.main]
+ignore-paths = ["^\\.venv/.*$"]
+
+[tool.pylint.format]
+max-line-length = 100
+
+# La couche d'acces aux donnees expose une methode par ecriture, dont les parametres
+# reflettent les colonnes de la table. Les parametres au-dela du premier sont
+# keyword-only, ce qui garde les appels lisibles malgre leur nombre.
+[tool.pylint.design]
+max-args = 8
+
+[tool.pylint."messages control"]
+disable = [
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "too-few-public-methods",
+]

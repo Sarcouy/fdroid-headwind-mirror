@@ -1,0 +1,1447 @@
+{
+ "packages": {
+  "com.nextcloud.client": {
+   "metadata": {
+    "lastUpdated": 1789210732819,
+    "name": {
+     "en-US": "Nextcloud"
+    },
+    "preferredSigner": "5709576f9d6c6a7687dd5d56b269d1fa5e379702b91bc83f39fd7b7c597c1b83"
+   },
+   "versions": {
+    "ccc70b2534201eb7d60f44dd50ea4abbc1c3721b6046d9a89842cf9505709ac9": {
+     "added": 1788747293665,
+     "file": {
+      "ipfsCIDv1": "bafybeiegsp75vtg7bagxlywbanqn4vbjzoun3d4cqb4x3owhc3f3iguiui",
+      "name": "/com.nextcloud.client_350000051.apk",
+      "sha256": "ccc70b2534201eb7d60f44dd50ea4abbc1c3721b6046d9a89842cf9505709ac9",
+      "size": 95314568
+     },
+     "manifest": {
+      "nativecode": [
+       "arm64-v8a",
+       "x86_64"
+      ],
+      "signer": {
+       "sha256": [
+        "5709576f9d6c6a7687dd5d56b269d1fa5e379702b91bc83f39fd7b7c597c1b83"
+       ]
+      },
+      "usesPermission": [
+       {
+        "name": "android.permission.READ_CONTACTS"
+       },
+       {
+        "name": "android.permission.WRITE_CONTACTS"
+       },
+       {
+        "name": "android.permission.READ_CALENDAR"
+       },
+       {
+        "name": "android.permission.WRITE_CALENDAR"
+       },
+       {
+        "maxSdkVersion": 29,
+        "name": "android.permission.WRITE_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.MANAGE_EXTERNAL_STORAGE"
+       },
+       {
+        "maxSdkVersion": 32,
+        "name": "android.permission.READ_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.CAMERA"
+       },
+       {
+        "name": "android.permission.VIBRATE"
+       },
+       {
+        "name": "android.permission.INTERNET"
+       },
+       {
+        "name": "android.permission.READ_SYNC_STATS"
+       },
+       {
+        "name": "android.permission.READ_SYNC_SETTINGS"
+       },
+       {
+        "name": "android.permission.WRITE_SYNC_SETTINGS"
+       },
+       {
+        "name": "android.permission.ACCESS_NETWORK_STATE"
+       },
+       {
+        "name": "android.permission.RECEIVE_BOOT_COMPLETED"
+       },
+       {
+        "name": "android.permission.WAKE_LOCK"
+       },
+       {
+        "name": "android.permission.USE_BIOMETRIC"
+       },
+       {
+        "name": "android.permission.REQUEST_INSTALL_PACKAGES"
+       },
+       {
+        "name": "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+       },
+       {
+        "name": "android.permission.POST_NOTIFICATIONS"
+       },
+       {
+        "maxSdkVersion": 25,
+        "name": "com.android.launcher.permission.INSTALL_SHORTCUT"
+       },
+       {
+        "name": "android.permission.ACCESS_MEDIA_LOCATION"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_IMAGES"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_VIDEO"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+       },
+       {
+        "name": "android.permission.AUTHENTICATE_ACCOUNTS"
+       },
+       {
+        "name": "android.permission.GET_ACCOUNTS"
+       },
+       {
+        "name": "android.permission.MANAGE_ACCOUNTS"
+       },
+       {
+        "name": "android.permission.USE_CREDENTIALS"
+       },
+       {
+        "name": "com.nextcloud.client.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+       }
+      ],
+      "usesSdk": {
+       "minSdkVersion": 28,
+       "targetSdkVersion": 36
+      },
+      "versionCode": 350000051,
+      "versionName": "35.0.0 RC1"
+     },
+     "releaseChannels": [
+      "Beta"
+     ]
+    },
+    "d3d0c0976f3de4ac931d4130617fc09a1590f58f3f9ae47c663b6d306559ada9": {
+     "added": 1789210732819,
+     "file": {
+      "ipfsCIDv1": "bafybeie6fg7pwsvybof6c2pf63elzfyjnllgmwdaaucwvtnzgzprvkewwa",
+      "name": "/com.nextcloud.client_350000052.apk",
+      "sha256": "d3d0c0976f3de4ac931d4130617fc09a1590f58f3f9ae47c663b6d306559ada9",
+      "size": 96740965
+     },
+     "manifest": {
+      "nativecode": [
+       "arm64-v8a",
+       "x86_64"
+      ],
+      "signer": {
+       "sha256": [
+        "5709576f9d6c6a7687dd5d56b269d1fa5e379702b91bc83f39fd7b7c597c1b83"
+       ]
+      },
+      "usesPermission": [
+       {
+        "name": "android.permission.READ_CONTACTS"
+       },
+       {
+        "name": "android.permission.WRITE_CONTACTS"
+       },
+       {
+        "name": "android.permission.READ_CALENDAR"
+       },
+       {
+        "name": "android.permission.WRITE_CALENDAR"
+       },
+       {
+        "maxSdkVersion": 29,
+        "name": "android.permission.WRITE_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.MANAGE_EXTERNAL_STORAGE"
+       },
+       {
+        "maxSdkVersion": 32,
+        "name": "android.permission.READ_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.CAMERA"
+       },
+       {
+        "name": "android.permission.VIBRATE"
+       },
+       {
+        "name": "android.permission.INTERNET"
+       },
+       {
+        "name": "android.permission.READ_SYNC_STATS"
+       },
+       {
+        "name": "android.permission.READ_SYNC_SETTINGS"
+       },
+       {
+        "name": "android.permission.WRITE_SYNC_SETTINGS"
+       },
+       {
+        "name": "android.permission.ACCESS_NETWORK_STATE"
+       },
+       {
+        "name": "android.permission.RECEIVE_BOOT_COMPLETED"
+       },
+       {
+        "name": "android.permission.WAKE_LOCK"
+       },
+       {
+        "name": "android.permission.USE_BIOMETRIC"
+       },
+       {
+        "name": "android.permission.REQUEST_INSTALL_PACKAGES"
+       },
+       {
+        "name": "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+       },
+       {
+        "name": "android.permission.POST_NOTIFICATIONS"
+       },
+       {
+        "maxSdkVersion": 25,
+        "name": "com.android.launcher.permission.INSTALL_SHORTCUT"
+       },
+       {
+        "name": "android.permission.ACCESS_MEDIA_LOCATION"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_IMAGES"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_VIDEO"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+       },
+       {
+        "name": "android.permission.AUTHENTICATE_ACCOUNTS"
+       },
+       {
+        "name": "android.permission.GET_ACCOUNTS"
+       },
+       {
+        "name": "android.permission.MANAGE_ACCOUNTS"
+       },
+       {
+        "name": "android.permission.USE_CREDENTIALS"
+       },
+       {
+        "name": "com.nextcloud.client.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+       }
+      ],
+      "usesSdk": {
+       "minSdkVersion": 28,
+       "targetSdkVersion": 36
+      },
+      "versionCode": 350000052,
+      "versionName": "35.0.0 RC2"
+     },
+     "releaseChannels": [
+      "Beta"
+     ]
+    },
+    "db64c61d7e4268d0aeb451a97bfdfae6bb669dfa975b9a25aef9ff393ab02e0c": {
+     "added": 1787926966344,
+     "file": {
+      "ipfsCIDv1": "bafybeicmsbb7n76r3c2xr2hfokv34ixu5npasssnswpg5m5mfmfwgne2vy",
+      "name": "/com.nextcloud.client_340010190.apk",
+      "sha256": "db64c61d7e4268d0aeb451a97bfdfae6bb669dfa975b9a25aef9ff393ab02e0c",
+      "size": 92231250
+     },
+     "manifest": {
+      "nativecode": [
+       "arm64-v8a",
+       "x86_64"
+      ],
+      "signer": {
+       "sha256": [
+        "5709576f9d6c6a7687dd5d56b269d1fa5e379702b91bc83f39fd7b7c597c1b83"
+       ]
+      },
+      "usesPermission": [
+       {
+        "name": "android.permission.READ_CONTACTS"
+       },
+       {
+        "name": "android.permission.WRITE_CONTACTS"
+       },
+       {
+        "name": "android.permission.READ_CALENDAR"
+       },
+       {
+        "name": "android.permission.WRITE_CALENDAR"
+       },
+       {
+        "maxSdkVersion": 29,
+        "name": "android.permission.WRITE_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.MANAGE_EXTERNAL_STORAGE"
+       },
+       {
+        "maxSdkVersion": 32,
+        "name": "android.permission.READ_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.CAMERA"
+       },
+       {
+        "name": "android.permission.VIBRATE"
+       },
+       {
+        "name": "android.permission.INTERNET"
+       },
+       {
+        "name": "android.permission.READ_SYNC_STATS"
+       },
+       {
+        "name": "android.permission.READ_SYNC_SETTINGS"
+       },
+       {
+        "name": "android.permission.WRITE_SYNC_SETTINGS"
+       },
+       {
+        "name": "android.permission.ACCESS_NETWORK_STATE"
+       },
+       {
+        "name": "android.permission.RECEIVE_BOOT_COMPLETED"
+       },
+       {
+        "name": "android.permission.WAKE_LOCK"
+       },
+       {
+        "name": "android.permission.USE_BIOMETRIC"
+       },
+       {
+        "name": "android.permission.REQUEST_INSTALL_PACKAGES"
+       },
+       {
+        "name": "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+       },
+       {
+        "name": "android.permission.POST_NOTIFICATIONS"
+       },
+       {
+        "maxSdkVersion": 25,
+        "name": "com.android.launcher.permission.INSTALL_SHORTCUT"
+       },
+       {
+        "name": "android.permission.ACCESS_MEDIA_LOCATION"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_IMAGES"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_VIDEO"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+       },
+       {
+        "name": "android.permission.AUTHENTICATE_ACCOUNTS"
+       },
+       {
+        "name": "android.permission.GET_ACCOUNTS"
+       },
+       {
+        "name": "android.permission.MANAGE_ACCOUNTS"
+       },
+       {
+        "name": "android.permission.USE_CREDENTIALS"
+       },
+       {
+        "name": "com.nextcloud.client.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+       }
+      ],
+      "usesSdk": {
+       "minSdkVersion": 28,
+       "targetSdkVersion": 36
+      },
+      "versionCode": 340010190,
+      "versionName": "34.1.1"
+     }
+    }
+   }
+  },
+  "com.pavelsof.wormhole": {
+   "metadata": {
+    "lastUpdated": 1617580800000,
+    "name": {
+     "en-US": "Wormhole"
+    },
+    "preferredSigner": "a2680d97df8cc73dd71d2b93bd22ef0bc5d86cb8c2a05e04b54d137d6e20a06f"
+   },
+   "versions": {
+    "e262966cd467a1548f55d663209e493a708e740cee03ab2afdb617e9622a3c87": {
+     "added": 1617580800000,
+     "file": {
+      "ipfsCIDv1": "bafybeiguzznhzpns5axyidf3aezxocfh6oup2gh6yahalgc3r753vynoru",
+      "name": "/com.pavelsof.wormhole_721201.apk",
+      "sha256": "e262966cd467a1548f55d663209e493a708e740cee03ab2afdb617e9622a3c87",
+      "size": 26920362
+     },
+     "manifest": {
+      "nativecode": [
+       "armeabi-v7a"
+      ],
+      "signer": {
+       "sha256": [
+        "a2680d97df8cc73dd71d2b93bd22ef0bc5d86cb8c2a05e04b54d137d6e20a06f"
+       ]
+      },
+      "usesPermission": [
+       {
+        "name": "android.permission.WRITE_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.INTERNET"
+       },
+       {
+        "name": "android.permission.WAKE_LOCK"
+       },
+       {
+        "name": "android.permission.WRITE_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.WAKE_LOCK"
+       },
+       {
+        "name": "android.permission.READ_EXTERNAL_STORAGE"
+       }
+      ],
+      "usesSdk": {
+       "minSdkVersion": 21,
+       "targetSdkVersion": 29
+      },
+      "versionCode": 721201,
+      "versionName": "0.2.1"
+     }
+    }
+   }
+  },
+  "com.shatteredpixel.shatteredpixeldungeon": {
+   "metadata": {
+    "lastUpdated": 1789210732819,
+    "name": {
+     "en-US": "Shattered Pixel Dungeon"
+    },
+    "preferredSigner": "92a8d7a96447565aed749b12b03251842d65a7354ba67dc2443f4224d772f61c"
+   },
+   "versions": {
+    "4d3b85609f48830c521ab4c0d6d027ddc3affeb0e829e02b6829209924a8ce94": {
+     "added": 1770394114000,
+     "file": {
+      "ipfsCIDv1": "bafybeifvlrfzq5vuf6yqe5ymtk5h3tulssm343curjfmpbipeces7l2dia",
+      "name": "/com.shatteredpixel.shatteredpixeldungeon_890.apk",
+      "sha256": "4d3b85609f48830c521ab4c0d6d027ddc3affeb0e829e02b6829209924a8ce94",
+      "size": 29913847
+     },
+     "manifest": {
+      "nativecode": [
+       "arm64-v8a",
+       "armeabi-v7a",
+       "x86",
+       "x86_64"
+      ],
+      "signer": {
+       "sha256": [
+        "92a8d7a96447565aed749b12b03251842d65a7354ba67dc2443f4224d772f61c"
+       ]
+      },
+      "usesPermission": [
+       {
+        "name": "android.permission.VIBRATE"
+       },
+       {
+        "name": "android.permission.INTERNET"
+       },
+       {
+        "name": "android.permission.ACCESS_NETWORK_STATE"
+       },
+       {
+        "name": "com.shatteredpixel.shatteredpixeldungeon.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+       }
+      ],
+      "usesSdk": {
+       "minSdkVersion": 21,
+       "targetSdkVersion": 35
+      },
+      "versionCode": 890,
+      "versionName": "3.3.5"
+     }
+    },
+    "4eac8e679209c6cf24e62de6c0381395da3d026ee7852feda98492244db3f459": {
+     "added": 1771070792000,
+     "file": {
+      "ipfsCIDv1": "bafybeigfxcjnajfgyh4fsyfuljtjvo6rvdfkswbsbanxtuyfdr5livdrpi",
+      "name": "/com.shatteredpixel.shatteredpixeldungeon_891.apk",
+      "sha256": "4eac8e679209c6cf24e62de6c0381395da3d026ee7852feda98492244db3f459",
+      "size": 29926135
+     },
+     "manifest": {
+      "nativecode": [
+       "arm64-v8a",
+       "armeabi-v7a",
+       "x86",
+       "x86_64"
+      ],
+      "signer": {
+       "sha256": [
+        "92a8d7a96447565aed749b12b03251842d65a7354ba67dc2443f4224d772f61c"
+       ]
+      },
+      "usesPermission": [
+       {
+        "name": "android.permission.VIBRATE"
+       },
+       {
+        "name": "android.permission.INTERNET"
+       },
+       {
+        "name": "android.permission.ACCESS_NETWORK_STATE"
+       },
+       {
+        "name": "com.shatteredpixel.shatteredpixeldungeon.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+       }
+      ],
+      "usesSdk": {
+       "minSdkVersion": 21,
+       "targetSdkVersion": 35
+      },
+      "versionCode": 891,
+      "versionName": "3.3.6"
+     }
+    },
+    "9de397c2690a9e8556dd2ac66fab3247a81a30a61118be2d28312a34cc600479": {
+     "added": 1789210732819,
+     "file": {
+      "ipfsCIDv1": "bafybeifth7of7koehfpno2q33sn3zrcuw5gp66daee7nwszzajcpvxoslq",
+      "name": "/com.shatteredpixel.shatteredpixeldungeon_911.apk",
+      "sha256": "9de397c2690a9e8556dd2ac66fab3247a81a30a61118be2d28312a34cc600479",
+      "size": 30254580
+     },
+     "manifest": {
+      "nativecode": [
+       "arm64-v8a",
+       "armeabi-v7a",
+       "x86",
+       "x86_64"
+      ],
+      "signer": {
+       "sha256": [
+        "92a8d7a96447565aed749b12b03251842d65a7354ba67dc2443f4224d772f61c"
+       ]
+      },
+      "usesPermission": [
+       {
+        "name": "android.permission.VIBRATE"
+       },
+       {
+        "name": "android.permission.INTERNET"
+       },
+       {
+        "name": "android.permission.ACCESS_NETWORK_STATE"
+       },
+       {
+        "name": "com.shatteredpixel.shatteredpixeldungeon.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+       }
+      ],
+      "usesSdk": {
+       "minSdkVersion": 21,
+       "targetSdkVersion": 36
+      },
+      "versionCode": 911,
+      "versionName": "4.0.0"
+     }
+    },
+    "be901407280a5b3b281969e068f725ed5d52c9cd9a7b55013de68487ad419ec4": {
+     "added": 1774386746254,
+     "file": {
+      "ipfsCIDv1": "bafybeiahdzprgd5ibdoe27gimmfwxs35zo5rola3wle2bkiobn3axmz4om",
+      "name": "/com.shatteredpixel.shatteredpixeldungeon_896.apk",
+      "sha256": "be901407280a5b3b281969e068f725ed5d52c9cd9a7b55013de68487ad419ec4",
+      "size": 29918038
+     },
+     "manifest": {
+      "nativecode": [
+       "arm64-v8a",
+       "armeabi-v7a",
+       "x86",
+       "x86_64"
+      ],
+      "signer": {
+       "sha256": [
+        "92a8d7a96447565aed749b12b03251842d65a7354ba67dc2443f4224d772f61c"
+       ]
+      },
+      "usesPermission": [
+       {
+        "name": "android.permission.VIBRATE"
+       },
+       {
+        "name": "android.permission.INTERNET"
+       },
+       {
+        "name": "android.permission.ACCESS_NETWORK_STATE"
+       },
+       {
+        "name": "com.shatteredpixel.shatteredpixeldungeon.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+       }
+      ],
+      "usesSdk": {
+       "minSdkVersion": 21,
+       "targetSdkVersion": 36
+      },
+      "versionCode": 896,
+      "versionName": "3.3.8"
+     }
+    },
+    "dae135a4aa1c25a0ff2c33414c0d3f8b18d7ad134ebc60c9eed70fbc102966ae": {
+     "added": 1772960547000,
+     "file": {
+      "ipfsCIDv1": "bafybeietiezx5thorv2zh64h45twibodnriyyequvqe64lmvwc4is3nhru",
+      "name": "/com.shatteredpixel.shatteredpixeldungeon_894.apk",
+      "sha256": "dae135a4aa1c25a0ff2c33414c0d3f8b18d7ad134ebc60c9eed70fbc102966ae",
+      "size": 29930231
+     },
+     "manifest": {
+      "nativecode": [
+       "arm64-v8a",
+       "armeabi-v7a",
+       "x86",
+       "x86_64"
+      ],
+      "signer": {
+       "sha256": [
+        "92a8d7a96447565aed749b12b03251842d65a7354ba67dc2443f4224d772f61c"
+       ]
+      },
+      "usesPermission": [
+       {
+        "name": "android.permission.VIBRATE"
+       },
+       {
+        "name": "android.permission.INTERNET"
+       },
+       {
+        "name": "android.permission.ACCESS_NETWORK_STATE"
+       },
+       {
+        "name": "com.shatteredpixel.shatteredpixeldungeon.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+       }
+      ],
+      "usesSdk": {
+       "minSdkVersion": 21,
+       "targetSdkVersion": 35
+      },
+      "versionCode": 894,
+      "versionName": "3.3.7"
+     }
+    },
+    "ed1b43d7312a70e86c5cd159d4ac29d7d69fae1033331a4e70f9a00dd346b207": {
+     "added": 1789210732819,
+     "file": {
+      "ipfsCIDv1": "bafybeic36oj24z2ymijf32gintiox7zbavgy5d3immlt5hkqfdzlndm63y",
+      "name": "/com.shatteredpixel.shatteredpixeldungeon_912.apk",
+      "sha256": "ed1b43d7312a70e86c5cd159d4ac29d7d69fae1033331a4e70f9a00dd346b207",
+      "size": 30266866
+     },
+     "manifest": {
+      "nativecode": [
+       "arm64-v8a",
+       "armeabi-v7a",
+       "x86",
+       "x86_64"
+      ],
+      "signer": {
+       "sha256": [
+        "d45f760b89608b4b253a3b160dc2707f1ff4e8dd8ca4d2e8e1b81c2c72d81753"
+       ]
+      },
+      "usesPermission": [
+       {
+        "name": "android.permission.VIBRATE"
+       },
+       {
+        "name": "android.permission.INTERNET"
+       },
+       {
+        "name": "android.permission.ACCESS_NETWORK_STATE"
+       },
+       {
+        "name": "com.shatteredpixel.shatteredpixeldungeon.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+       }
+      ],
+      "usesSdk": {
+       "minSdkVersion": 21,
+       "targetSdkVersion": 36
+      },
+      "versionCode": 912,
+      "versionName": "4.0.0"
+     }
+    }
+   }
+  },
+  "org.videolan.vlc": {
+   "metadata": {
+    "lastUpdated": 1778402060034,
+    "name": {
+     "en-US": "VLC"
+    },
+    "preferredSigner": "80535be61eedb9a03b0476a6f493d496c3498770404339ea7a8000f5e61d22c0"
+   },
+   "versions": {
+    "0c316a06fdb44efbdaa9ba7f39c7fd7d5b4efc0e61b2b7a94a008e7625f699cd": {
+     "added": 1778402060034,
+     "file": {
+      "ipfsCIDv1": "bafybeid4s6pzhnbigmzpeoqyqualefbld7p2k75obojgaco6iv5gil6v2a",
+      "name": "/org.videolan.vlc_13070105.apk",
+      "sha256": "0c316a06fdb44efbdaa9ba7f39c7fd7d5b4efc0e61b2b7a94a008e7625f699cd",
+      "size": 47073346
+     },
+     "manifest": {
+      "nativecode": [
+       "armeabi-v7a"
+      ],
+      "signer": {
+       "sha256": [
+        "80535be61eedb9a03b0476a6f493d496c3498770404339ea7a8000f5e61d22c0"
+       ]
+      },
+      "usesPermission": [
+       {
+        "name": "org.videolan.vlc.permission.READ_EXTENSION_DATA"
+       },
+       {
+        "name": "org.videolan.vlc.permission.BIND_DATA_CONSUMER"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+       },
+       {
+        "name": "android.permission.BLUETOOTH_CONNECT"
+       },
+       {
+        "maxSdkVersion": 18,
+        "name": "android.permission.READ_LOGS"
+       },
+       {
+        "name": "android.permission.MANAGE_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.VIBRATE"
+       },
+       {
+        "name": "android.permission.WRITE_SETTINGS"
+       },
+       {
+        "name": "android.permission.READ_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.WRITE_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.INTERNET"
+       },
+       {
+        "name": "android.permission.RECEIVE_BOOT_COMPLETED"
+       },
+       {
+        "name": "android.permission.RECORD_AUDIO"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+       },
+       {
+        "name": "android.permission.CHANGE_NETWORK_STATE"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_AUDIO"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_VIDEO"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_IMAGES"
+       },
+       {
+        "name": "android.permission.ACCESS_NETWORK_STATE"
+       },
+       {
+        "name": "android.permission.WAKE_LOCK"
+       },
+       {
+        "name": "android.permission.MODIFY_AUDIO_SETTINGS"
+       },
+       {
+        "name": "android.permission.BLUETOOTH"
+       },
+       {
+        "name": "android.permission.SYSTEM_ALERT_WINDOW"
+       },
+       {
+        "name": "com.android.providers.tv.permission.READ_EPG_DATA"
+       },
+       {
+        "name": "com.android.providers.tv.permission.WRITE_EPG_DATA"
+       },
+       {
+        "name": "android.permission.POST_NOTIFICATIONS"
+       },
+       {
+        "name": "org.videolan.vlc.MEDIA"
+       },
+       {
+        "name": "org.videolan.vlc.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+       }
+      ],
+      "usesSdk": {
+       "minSdkVersion": 17,
+       "targetSdkVersion": 36
+      },
+      "versionCode": 13070105,
+      "versionName": "3.7.1"
+     }
+    },
+    "355ff246a0348c094a256926ea31cbec92701a2faca3d41d49170798c550ee3b": {
+     "added": 1778402060034,
+     "file": {
+      "ipfsCIDv1": "bafybeihy37tzii5zeqpamyehikunvntwijpy4b7k6sb35kapos2y4uxkia",
+      "name": "/org.videolan.vlc_13070106.apk",
+      "sha256": "355ff246a0348c094a256926ea31cbec92701a2faca3d41d49170798c550ee3b",
+      "size": 47990842
+     },
+     "manifest": {
+      "nativecode": [
+       "arm64-v8a"
+      ],
+      "signer": {
+       "sha256": [
+        "80535be61eedb9a03b0476a6f493d496c3498770404339ea7a8000f5e61d22c0"
+       ]
+      },
+      "usesPermission": [
+       {
+        "name": "org.videolan.vlc.permission.READ_EXTENSION_DATA"
+       },
+       {
+        "name": "org.videolan.vlc.permission.BIND_DATA_CONSUMER"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+       },
+       {
+        "name": "android.permission.BLUETOOTH_CONNECT"
+       },
+       {
+        "maxSdkVersion": 18,
+        "name": "android.permission.READ_LOGS"
+       },
+       {
+        "name": "android.permission.MANAGE_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.VIBRATE"
+       },
+       {
+        "name": "android.permission.WRITE_SETTINGS"
+       },
+       {
+        "name": "android.permission.READ_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.WRITE_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.INTERNET"
+       },
+       {
+        "name": "android.permission.RECEIVE_BOOT_COMPLETED"
+       },
+       {
+        "name": "android.permission.RECORD_AUDIO"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+       },
+       {
+        "name": "android.permission.CHANGE_NETWORK_STATE"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_AUDIO"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_VIDEO"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_IMAGES"
+       },
+       {
+        "name": "android.permission.ACCESS_NETWORK_STATE"
+       },
+       {
+        "name": "android.permission.WAKE_LOCK"
+       },
+       {
+        "name": "android.permission.MODIFY_AUDIO_SETTINGS"
+       },
+       {
+        "name": "android.permission.BLUETOOTH"
+       },
+       {
+        "name": "android.permission.SYSTEM_ALERT_WINDOW"
+       },
+       {
+        "name": "com.android.providers.tv.permission.READ_EPG_DATA"
+       },
+       {
+        "name": "com.android.providers.tv.permission.WRITE_EPG_DATA"
+       },
+       {
+        "name": "android.permission.POST_NOTIFICATIONS"
+       },
+       {
+        "name": "org.videolan.vlc.MEDIA"
+       },
+       {
+        "name": "org.videolan.vlc.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+       }
+      ],
+      "usesSdk": {
+       "minSdkVersion": 17,
+       "targetSdkVersion": 36
+      },
+      "versionCode": 13070106,
+      "versionName": "3.7.1"
+     }
+    },
+    "44d46c60f74ac8aa3c94db1ba2b57fc147e26a2b7ef0c33ffae0b7b1d845bd2e": {
+     "added": 1778402060034,
+     "file": {
+      "ipfsCIDv1": "bafybeiacf25rapuz4crslzsfyhfgz3yr5qbjz7mrudd33t7fx6hkj57jgq",
+      "name": "/org.videolan.vlc_13070107.apk",
+      "sha256": "44d46c60f74ac8aa3c94db1ba2b57fc147e26a2b7ef0c33ffae0b7b1d845bd2e",
+      "size": 48158754
+     },
+     "manifest": {
+      "nativecode": [
+       "x86"
+      ],
+      "signer": {
+       "sha256": [
+        "80535be61eedb9a03b0476a6f493d496c3498770404339ea7a8000f5e61d22c0"
+       ]
+      },
+      "usesPermission": [
+       {
+        "name": "org.videolan.vlc.permission.READ_EXTENSION_DATA"
+       },
+       {
+        "name": "org.videolan.vlc.permission.BIND_DATA_CONSUMER"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+       },
+       {
+        "name": "android.permission.BLUETOOTH_CONNECT"
+       },
+       {
+        "maxSdkVersion": 18,
+        "name": "android.permission.READ_LOGS"
+       },
+       {
+        "name": "android.permission.MANAGE_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.VIBRATE"
+       },
+       {
+        "name": "android.permission.WRITE_SETTINGS"
+       },
+       {
+        "name": "android.permission.READ_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.WRITE_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.INTERNET"
+       },
+       {
+        "name": "android.permission.RECEIVE_BOOT_COMPLETED"
+       },
+       {
+        "name": "android.permission.RECORD_AUDIO"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+       },
+       {
+        "name": "android.permission.CHANGE_NETWORK_STATE"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_AUDIO"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_VIDEO"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_IMAGES"
+       },
+       {
+        "name": "android.permission.ACCESS_NETWORK_STATE"
+       },
+       {
+        "name": "android.permission.WAKE_LOCK"
+       },
+       {
+        "name": "android.permission.MODIFY_AUDIO_SETTINGS"
+       },
+       {
+        "name": "android.permission.BLUETOOTH"
+       },
+       {
+        "name": "android.permission.SYSTEM_ALERT_WINDOW"
+       },
+       {
+        "name": "com.android.providers.tv.permission.READ_EPG_DATA"
+       },
+       {
+        "name": "com.android.providers.tv.permission.WRITE_EPG_DATA"
+       },
+       {
+        "name": "android.permission.POST_NOTIFICATIONS"
+       },
+       {
+        "name": "org.videolan.vlc.MEDIA"
+       },
+       {
+        "name": "org.videolan.vlc.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+       }
+      ],
+      "usesSdk": {
+       "minSdkVersion": 17,
+       "targetSdkVersion": 36
+      },
+      "versionCode": 13070107,
+      "versionName": "3.7.1"
+     }
+    },
+    "4a9144fadfd8606cc5c0e9db892fd24846b7b2efeb1630db5377955d1612b119": {
+     "added": 1778402060034,
+     "file": {
+      "ipfsCIDv1": "bafybeifahio3mx4yu7lfjnwpnksvurrr2eulmmi2bcoddskkbaxqo7exva",
+      "name": "/org.videolan.vlc_13070108.apk",
+      "sha256": "4a9144fadfd8606cc5c0e9db892fd24846b7b2efeb1630db5377955d1612b119",
+      "size": 49444910
+     },
+     "manifest": {
+      "nativecode": [
+       "x86_64"
+      ],
+      "signer": {
+       "sha256": [
+        "80535be61eedb9a03b0476a6f493d496c3498770404339ea7a8000f5e61d22c0"
+       ]
+      },
+      "usesPermission": [
+       {
+        "name": "org.videolan.vlc.permission.READ_EXTENSION_DATA"
+       },
+       {
+        "name": "org.videolan.vlc.permission.BIND_DATA_CONSUMER"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+       },
+       {
+        "name": "android.permission.BLUETOOTH_CONNECT"
+       },
+       {
+        "maxSdkVersion": 18,
+        "name": "android.permission.READ_LOGS"
+       },
+       {
+        "name": "android.permission.MANAGE_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.VIBRATE"
+       },
+       {
+        "name": "android.permission.WRITE_SETTINGS"
+       },
+       {
+        "name": "android.permission.READ_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.WRITE_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.INTERNET"
+       },
+       {
+        "name": "android.permission.RECEIVE_BOOT_COMPLETED"
+       },
+       {
+        "name": "android.permission.RECORD_AUDIO"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+       },
+       {
+        "name": "android.permission.CHANGE_NETWORK_STATE"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_AUDIO"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_VIDEO"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_IMAGES"
+       },
+       {
+        "name": "android.permission.ACCESS_NETWORK_STATE"
+       },
+       {
+        "name": "android.permission.WAKE_LOCK"
+       },
+       {
+        "name": "android.permission.MODIFY_AUDIO_SETTINGS"
+       },
+       {
+        "name": "android.permission.BLUETOOTH"
+       },
+       {
+        "name": "android.permission.SYSTEM_ALERT_WINDOW"
+       },
+       {
+        "name": "com.android.providers.tv.permission.READ_EPG_DATA"
+       },
+       {
+        "name": "com.android.providers.tv.permission.WRITE_EPG_DATA"
+       },
+       {
+        "name": "android.permission.POST_NOTIFICATIONS"
+       },
+       {
+        "name": "org.videolan.vlc.MEDIA"
+       },
+       {
+        "name": "org.videolan.vlc.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+       }
+      ],
+      "usesSdk": {
+       "minSdkVersion": 17,
+       "targetSdkVersion": 36
+      },
+      "versionCode": 13070108,
+      "versionName": "3.7.1"
+     }
+    },
+    "a60901b1273bbed35ec2aa9e29c9ec27c15cb0b341a786622644639d0773c55f": {
+     "added": 1771935176000,
+     "file": {
+      "ipfsCIDv1": "bafybeicuvnfmtlenneduauknbnlc22wpkgabjyryxdcjgyxmcqyc6he2em",
+      "name": "/org.videolan.vlc_13070008.apk",
+      "sha256": "a60901b1273bbed35ec2aa9e29c9ec27c15cb0b341a786622644639d0773c55f",
+      "size": 51394470
+     },
+     "manifest": {
+      "nativecode": [
+       "x86_64"
+      ],
+      "signer": {
+       "sha256": [
+        "80535be61eedb9a03b0476a6f493d496c3498770404339ea7a8000f5e61d22c0"
+       ]
+      },
+      "usesPermission": [
+       {
+        "name": "org.videolan.vlc.permission.READ_EXTENSION_DATA"
+       },
+       {
+        "name": "org.videolan.vlc.permission.BIND_DATA_CONSUMER"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+       },
+       {
+        "name": "android.permission.BLUETOOTH_CONNECT"
+       },
+       {
+        "maxSdkVersion": 18,
+        "name": "android.permission.READ_LOGS"
+       },
+       {
+        "name": "android.permission.MANAGE_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.VIBRATE"
+       },
+       {
+        "name": "android.permission.WRITE_SETTINGS"
+       },
+       {
+        "name": "android.permission.READ_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.WRITE_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.INTERNET"
+       },
+       {
+        "name": "android.permission.RECEIVE_BOOT_COMPLETED"
+       },
+       {
+        "name": "android.permission.RECORD_AUDIO"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+       },
+       {
+        "name": "android.permission.CHANGE_NETWORK_STATE"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_AUDIO"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_VIDEO"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_IMAGES"
+       },
+       {
+        "name": "android.permission.ACCESS_NETWORK_STATE"
+       },
+       {
+        "name": "android.permission.WAKE_LOCK"
+       },
+       {
+        "name": "android.permission.MODIFY_AUDIO_SETTINGS"
+       },
+       {
+        "name": "android.permission.BLUETOOTH"
+       },
+       {
+        "name": "android.permission.SYSTEM_ALERT_WINDOW"
+       },
+       {
+        "name": "com.android.providers.tv.permission.READ_EPG_DATA"
+       },
+       {
+        "name": "com.android.providers.tv.permission.WRITE_EPG_DATA"
+       },
+       {
+        "name": "android.permission.POST_NOTIFICATIONS"
+       },
+       {
+        "name": "org.videolan.vlc.MEDIA"
+       },
+       {
+        "name": "org.videolan.vlc.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+       }
+      ],
+      "usesSdk": {
+       "minSdkVersion": 17,
+       "targetSdkVersion": 36
+      },
+      "versionCode": 13070008,
+      "versionName": "3.7.0"
+     }
+    },
+    "a689ead7608050a577163fa8a12458afd82bfaa5eb3ac663ae3c2ea2add34436": {
+     "added": 1771935174000,
+     "file": {
+      "ipfsCIDv1": "bafybeiao6yt6dncgpkmny65f6zzloklnggqq2kbfzqjknj2rsf7oj65pku",
+      "name": "/org.videolan.vlc_13070007.apk",
+      "sha256": "a689ead7608050a577163fa8a12458afd82bfaa5eb3ac663ae3c2ea2add34436",
+      "size": 48220058
+     },
+     "manifest": {
+      "nativecode": [
+       "x86"
+      ],
+      "signer": {
+       "sha256": [
+        "80535be61eedb9a03b0476a6f493d496c3498770404339ea7a8000f5e61d22c0"
+       ]
+      },
+      "usesPermission": [
+       {
+        "name": "org.videolan.vlc.permission.READ_EXTENSION_DATA"
+       },
+       {
+        "name": "org.videolan.vlc.permission.BIND_DATA_CONSUMER"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+       },
+       {
+        "name": "android.permission.BLUETOOTH_CONNECT"
+       },
+       {
+        "maxSdkVersion": 18,
+        "name": "android.permission.READ_LOGS"
+       },
+       {
+        "name": "android.permission.MANAGE_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.VIBRATE"
+       },
+       {
+        "name": "android.permission.WRITE_SETTINGS"
+       },
+       {
+        "name": "android.permission.READ_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.WRITE_EXTERNAL_STORAGE"
+       },
+       {
+        "name": "android.permission.INTERNET"
+       },
+       {
+        "name": "android.permission.RECEIVE_BOOT_COMPLETED"
+       },
+       {
+        "name": "android.permission.RECORD_AUDIO"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+       },
+       {
+        "name": "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+       },
+       {
+        "name": "android.permission.CHANGE_NETWORK_STATE"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_AUDIO"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_VIDEO"
+       },
+       {
+        "name": "android.permission.READ_MEDIA_IMAGES"
+       },
+       {
+        "name": "android.permission.ACCESS_NETWORK_STATE"
+       },
+       {
+        "name": "android.permission.WAKE_LOCK"
+       },
+       {
+        "name": "android.permission.MODIFY_AUDIO_SETTINGS"
+       },
+       {
+        "name": "android.permission.BLUETOOTH"
+       },
+       {
+        "name": "android.permission.SYSTEM_ALERT_WINDOW"
+       },
+       {
+        "name": "com.android.providers.tv.permission.READ_EPG_DATA"
+       },
+       {
+        "name": "com.android.providers.tv.permission.WRITE_EPG_DATA"
+       },
+       {
+        "name": "android.permission.POST_NOTIFICATIONS"
+       },
+       {
+        "name": "org.videolan.vlc.MEDIA"
+       },
+       {
+        "name": "org.videolan.vlc.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+       }
+      ],
+      "usesSdk": {
+       "minSdkVersion": 17,
+       "targetSdkVersion": 36
+      },
+      "versionCode": 13070007,
+      "versionName": "3.7.0"
+     }
+    }
+   }
+  }
+ },
+ "repo": {
+  "address": "https://f-droid.org/repo",
+  "timestamp": 1789478586569
+ }
+}
