@@ -54,5 +54,10 @@ jobs:
         run: docker build -t fdroid-headwind-mirror:ci .
       - name: Check that the entrypoint runs as a non-root user
         run: |
-          test "$(docker run --rm --entrypoint id -u fdroid-headwind-mirror:ci)" != "0"
+          # -u belongs to id, after the image name: before it, docker run reads
+          # it as --user and the command fails with empty output, which a
+          # comparison against "0" would happily accept.
+          uid="$(docker run --rm --entrypoint id fdroid-headwind-mirror:ci -u)"
+          echo "container uid: ${uid}"
+          test -n "${uid}" && test "${uid}" -ne 0
           docker run --rm fdroid-headwind-mirror:ci --help
