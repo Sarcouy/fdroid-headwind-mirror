@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import sys
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, NoReturn
 
+import structlog
 import typer
 from pydantic import ValidationError
 
@@ -38,7 +41,8 @@ from fdroid_headwind_mirror.fdroid.client import FDroidClient, FDroidError
 from fdroid_headwind_mirror.fdroid.download import ApkStore
 from fdroid_headwind_mirror.headwind.client import HeadwindClient
 from fdroid_headwind_mirror.headwind.errors import HeadwindError, HeadwindPermissionError
-from fdroid_headwind_mirror.state.repository import StateRepository
+from fdroid_headwind_mirror.reporting.report import RunReport, build_report
+from fdroid_headwind_mirror.state.repository import StateRepository, SyncRun
 
 app = typer.Typer(
     help="Synchronise les mises a jour F-Droid vers Headwind MDM.", no_args_is_help=True
@@ -68,6 +72,21 @@ _PERMISSION_MESSAGE = (
 @app.callback()
 def main() -> None:
     """Point d'entree du service."""
+    _configure_logging()
+
+
+def _configure_logging() -> None:
+    # Le journal part sur stderr: --json ecrit son rapport sur stdout, et les deux flux doivent
+    # rester analysables separement quand le service tourne sous timer.
+    structlog.configure(
+        processors=[
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso", utc=True),
+            structlog.processors.JSONRenderer(),
+        ],
+        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+        cache_logger_on_first_use=False,
+    )
 
 
 @app.command()
@@ -164,6 +183,14 @@ def sync(
             versions_created=publication.created if publication else 0,
             errors=errors,
         )
+        _log_run(
+            repository,
+            run_id,
+            plan=plan,
+            publication=publication,
+            linking=linking,
+            errors=errors,
+        )
 
     if as_json:
         payload = plan.model_dump(mode="json")
@@ -179,6 +206,118 @@ def sync(
         _render_plan(plan, verification, publication, linking)
 
     raise typer.Exit(code=1 if errors else 0)
+
+
+def _log_run(
+    repository: StateRepository,
+    run_id: int,
+    *,
+    plan: SyncPlan,
+    publication: PublicationSummary | None,
+    linking: LinkingSummary | None,
+    errors: int,
+) -> None:
+    logger = structlog.get_logger()
+    for event in repository.list_events(run_id, "ERROR"):
+        logger.error(event.code, run_id=run_id, pkg=event.pkg, detail=event.message)
+    logger.info(
+        "sync.finished",
+        run_id=run_id,
+        packages=len(plan.packages),
+        updates=plan.updates,
+        rejections=plan.rejections,
+        versions_created=publication.created if publication else 0,
+        versions_linked=linking.linked if linking else 0,
+        awaiting_approval=len(linking.awaiting_approval) if linking else 0,
+        errors=errors,
+    )
+
+
+@app.command("report")
+def report_command(
+    runs: Annotated[int, typer.Option("--runs", min=1, help="Executions a afficher.")] = 5,
+    as_json: Annotated[bool, typer.Option("--json", help="Sortie JSON.")] = False,
+) -> None:
+    """Restitue l'historique des executions et les points d'attention."""
+    settings = _load_settings()
+    with StateRepository(settings.database_path) as repository:
+        run_report = build_report(repository, runs=runs)
+
+    if as_json:
+        typer.echo(json.dumps(run_report.model_dump(mode="json"), indent=2, ensure_ascii=False))
+    else:
+        _render_report(run_report)
+
+    raise typer.Exit(code=0 if run_report.healthy or run_report.last_run is None else 1)
+
+
+@app.command()
+def prune(
+    days: Annotated[int, typer.Option("--days", min=1, help="Anciennete a conserver.")] = 90,
+    assume_yes: Annotated[
+        bool, typer.Option("--yes", help="Ne pas demander confirmation.")
+    ] = False,
+) -> None:
+    """Supprime l'historique d'executions anterieur au delai indique."""
+    settings = _load_settings()
+    before = (datetime.now(UTC) - timedelta(days=days)).isoformat(timespec="seconds")
+    with StateRepository(settings.database_path) as repository:
+        if not assume_yes:
+            typer.confirm(
+                f"Supprimer definitivement les executions anterieures a {before} ?", abort=True
+            )
+        removed_runs, removed_events = repository.prune_runs(before)
+
+    typer.echo(f"{removed_runs} execution(s) et {removed_events} evenement(s) supprime(s)")
+
+
+def _render_report(run_report: RunReport) -> None:
+    if run_report.last_run is None:
+        typer.secho("Aucune execution enregistree.", fg=typer.colors.YELLOW)
+        return
+
+    last = run_report.last_run
+    typer.secho(
+        f"Derniere execution #{last.id}: {last.status}"
+        + (" (inachevee)" if run_report.unfinished else ""),
+        fg=typer.colors.GREEN if run_report.healthy else typer.colors.RED,
+    )
+    typer.echo(
+        f"  debutee {last.started_at}, {last.packages_checked} paquet(s) verifie(s),"
+        f" {last.versions_created} version(s) creee(s), {last.errors} erreur(s)"
+    )
+
+    if run_report.errors:
+        typer.secho(
+            f"\nErreurs de la derniere execution ({len(run_report.errors)}):", fg=typer.colors.RED
+        )
+        for event in run_report.errors:
+            label = f"{event.pkg} " if event.pkg else ""
+            typer.echo(f"  {label}{event.code}: {event.message}")
+
+    if run_report.pending_approvals:
+        typer.secho(
+            f"\nEn attente de rattachement ({len(run_report.pending_approvals)}):",
+            fg=typer.colors.YELLOW,
+        )
+        for pending in run_report.pending_approvals:
+            typer.echo(
+                f"  {pending.pkg}: version {pending.created_version_code} creee,"
+                f" rattachee {pending.pushed_version_code or 'aucune'}"
+            )
+
+    typer.echo(f"\nHistorique ({len(run_report.history)} derniere(s) execution(s)):")
+    for entry in run_report.history:
+        typer.echo(f"  #{entry.id}  {entry.started_at}  {_run_label(entry)}")
+
+    typer.echo(f"\n{run_report.tracked_packages} paquet(s) suivi(s)")
+
+
+def _run_label(run: SyncRun) -> str:
+    return (
+        f"{run.status.ljust(8)} {run.packages_checked} verifie(s),"
+        f" {run.versions_created} creee(s), {run.errors} erreur(s)"
+    )
 
 
 def _build_sync_plan(

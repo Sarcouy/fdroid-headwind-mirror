@@ -18,7 +18,7 @@ version candidate font l'objet d'une note séparée, [docs/iteration-2.md](docs/
 | 4 | Publication d'une version (mode URL directe) | ✅ livrée |
 | 5 | ~~Mode miroir (envoi de l'APK)~~ | ❌ abandonnée |
 | 6 | Rattachement aux configurations et notification | ✅ livrée |
-| 7 | Ordonnancement, rapport, supervision | à faire |
+| 7 | Ordonnancement, rapport, supervision | ✅ livrée |
 
 L'itération 5 est abandonnée : **Headwind n'hébergera jamais les APK.** Les versions publiées pointent
 vers le dépôt F-Droid et les appareils les téléchargent eux-mêmes, ce qui suppose qu'ils atteignent
@@ -285,6 +285,70 @@ Trois garanties encadrent l'écriture :
 Avec `auto_approve: false` — le défaut — la version est créée mais laissée non rattachée, et signalée à
 chaque exécution. L'approbation se fait alors dans l'interface Headwind : le service ne fournit pas de
 commande d'approbation.
+
+### Rapport et supervision
+
+```bash
+poetry run fhm report
+```
+
+Restitue l'historique des exécutions et les points d'attention, sans aucun appel réseau — la commande ne lit
+que la base d'état locale.
+
+```
+Derniere execution #2: OK
+  debutee 2026-09-16T14:38:54+00:00, 3 paquet(s) verifie(s), 0 version(s) creee(s), 0 erreur(s)
+
+En attente de rattachement (1):
+  org.videolan.vlc: version 13070106 creee, rattachee aucune
+
+Historique (2 derniere(s) execution(s)):
+  #2  2026-09-16T14:38:54+00:00  OK       3 verifie(s), 0 creee(s), 0 erreur(s)
+  #1  2026-09-16T14:38:54+00:00  WARNING  3 verifie(s), 1 creee(s), 1 erreur(s)
+
+1 paquet(s) suivi(s)
+```
+
+Un paquet en attente de rattachement reste affiché même lorsque la dernière exécution s'est bien passée :
+c'est un état durable, que seul un opérateur peut lever. Les options sont `--runs N` et `--json`, et le code
+de sortie vaut `1` si la dernière exécution a produit des erreurs.
+
+### Journal structuré
+
+Chaque exécution de `sync` émet sur **stderr** une ligne JSON par erreur, puis une ligne de synthèse :
+
+```json
+{"run_id": 3, "packages": 3, "updates": 1, "rejections": 1, "versions_created": 0, "versions_linked": 0, "awaiting_approval": 0, "errors": 1, "event": "sync.finished", "level": "info", "timestamp": "2026-09-16T14:38:54Z"}
+```
+
+Le rapport `--json` sort sur **stdout**, le journal sur **stderr** : sous un timer, `journalctl` collecte le
+second sans jamais rendre le premier inanalysable.
+
+### Exécution quotidienne
+
+Le service n'embarque pas d'ordonnanceur. Les unités d'exemple sont dans [deploy/](deploy) :
+
+```bash
+sudo install -m 0644 deploy/fdroid-headwind-mirror.{service,timer} /etc/systemd/system/
+sudo install -D -m 0640 deploy/env.example /etc/fdroid-headwind-mirror/env
+sudo systemctl enable --now fdroid-headwind-mirror.timer
+```
+
+Trois points que les unités traitent explicitement :
+
+- **Le jeton vit dans `EnvironmentFile`**, jamais dans l'unité — celle-ci est lisible par tous.
+- **`WorkingDirectory` est obligatoire** : `packages.yaml`, `state.db` et le cache ont des chemins relatifs
+  par défaut.
+- **`RandomizedDelaySec=2h`** évite qu'un parc de services frappe `f-droid.org` à la même seconde.
+
+L'historique s'accumule à chaque exécution. La purge est une commande explicite, jamais un effet de bord
+d'une exécution planifiée :
+
+```bash
+poetry run fhm prune --days 90
+```
+
+Elle demande confirmation avant de supprimer, sauf avec `--yes`.
 
 ### Chaîne de confiance et limite connue
 
