@@ -1,0 +1,63 @@
+name: Publish
+
+# Version tags only: the Ansible role that deploys this image pins an exact
+# version (tailnet_fdroid_mirror_version) and Renovate follows the other images
+# the same way. Publishing on every push to main would hand a moving tag to a
+# fleet that updates itself.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the tag matches the project version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)"
+          echo "tag: ${tag} / pyproject: ${version}"
+          test "${tag}" = "${version}"
+        if: github.event_name == 'push'
+
+      - name: Compute the image name
+        # GHCR rejects uppercase, and github.repository carries the owner's own
+        # casing.
+        run: |
+          echo "IMAGE=ghcr.io/$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Check that the published image runs
+        run: |
+          image="$(echo "${{ steps.meta.outputs.tags }}" | head -1)"
+          docker run --rm "${image}" --help

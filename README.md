@@ -344,6 +344,24 @@ l'ensemble des paquets suivis à l'exécution suivante.
 
 Sans argument, l'image exécute `sync --dry-run` : une image démarrée par mégarde n'écrit rien dans Headwind.
 
+### Publication de l'image
+
+Un tag de version publie l'image sur GHCR :
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+Le workflow refuse de publier si le tag ne correspond pas à la version déclarée dans `pyproject.toml` : une
+image mal étiquetée serait déployée sous un numéro qui ne désigne pas son contenu. Les tags produits sont
+`0.1.0`, `0.1` et `latest`.
+
+La publication est volontairement liée aux tags et non aux fusions sur `main` : le déploiement épingle une
+version exacte, et un tag mouvant sur un parc qui se met à jour seul n'est pas souhaitable.
+
+À la **première** publication, le package GHCR est privé : le rendre public dans les paramètres du dépôt,
+sinon l'hôte devra s'authentifier pour le tirer.
+
 ### Exécution quotidienne
 
 Le service n'embarque pas d'ordonnanceur. Les unités d'exemple sont dans [deploy/](deploy) :
