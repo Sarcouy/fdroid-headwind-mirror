@@ -324,6 +324,26 @@ Chaque exécution de `sync` émet sur **stderr** une ligne JSON par erreur, puis
 Le rapport `--json` sort sur **stdout**, le journal sur **stderr** : sous un timer, `journalctl` collecte le
 second sans jamais rendre le premier inanalysable.
 
+### Conteneur
+
+```bash
+docker build -t fdroid-headwind-mirror .
+docker run --rm \
+  -v fdroid_mirror_data:/data \
+  -v ./packages.yaml:/config/packages.yaml:ro \
+  -e FHM_HEADWIND_URL=https://mdm.example.org \
+  -e FHM_HEADWIND_TOKEN=... \
+  -e FHM_PACKAGES_FILE=/config/packages.yaml \
+  fdroid-headwind-mirror sync --apply
+```
+
+L'image tourne sous un utilisateur non privilégié et son répertoire de travail est `/data`, où les chemins
+relatifs par défaut (`state.db`, `.cache`) se résolvent. **Ce volume doit être persistant** : perdre
+`state.db`, c'est perdre les signataires épinglés et les deux compteurs de progression, donc republier
+l'ensemble des paquets suivis à l'exécution suivante.
+
+Sans argument, l'image exécute `sync --dry-run` : une image démarrée par mégarde n'écrit rien dans Headwind.
+
 ### Exécution quotidienne
 
 Le service n'embarque pas d'ordonnanceur. Les unités d'exemple sont dans [deploy/](deploy) :
