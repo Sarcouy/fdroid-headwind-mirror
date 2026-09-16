@@ -5,7 +5,6 @@ repo:
   fingerprint: 43238d512c1e5eb2d6569f4a3afbf5523418b82e0a3ed1552770abb9a9c9ccab
 
 defaults:
-  mirror: true
   auto_approve: false
   target_abis: [arm64-v8a]
   blocked_anti_features: []
@@ -15,4 +14,3 @@ packages:
     auto_approve: true
   - pkg: com.nextcloud.client
   - pkg: org.videolan.vlc
-    mirror: false

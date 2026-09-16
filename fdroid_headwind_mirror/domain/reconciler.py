@@ -45,7 +45,6 @@ class PackageReport(BaseModel):
     application_id: int | None = None
     candidates: list[ApplicationRef] = Field(default_factory=list)
     headwind_version: str | None = None
-    mirror: bool
     auto_approve: bool
     expected_signer: str | None = None
     last_seen_version_code: int | None = None
@@ -124,7 +123,6 @@ def _reconcile_one(
     repository.upsert_tracked_package(
         pkg=entry.pkg,
         repo_url=entry.repo_url,
-        mirror=entry.mirror,
         auto_approve=entry.auto_approve,
         paused=entry.paused,
         hmdm_application_id=application_id,
@@ -139,7 +137,6 @@ def _reconcile_one(
         application_id=application_id,
         candidates=[ApplicationRef.of(candidate) for candidate in candidates],
         headwind_version=application.version if application is not None else None,
-        mirror=entry.mirror,
         auto_approve=entry.auto_approve,
         expected_signer=stored.expected_signer if stored else None,
         last_seen_version_code=stored.last_seen_version_code if stored else None,

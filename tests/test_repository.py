@@ -9,7 +9,6 @@ def track(repository: StateRepository, pkg: str, application_id: int | None = 7)
     repository.upsert_tracked_package(
         pkg=pkg,
         repo_url="https://f-droid.org/repo",
-        mirror=True,
         auto_approve=False,
         paused=False,
         hmdm_application_id=application_id,

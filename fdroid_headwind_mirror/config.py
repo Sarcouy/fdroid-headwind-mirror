@@ -37,7 +37,6 @@ DEFAULT_TARGET_ABIS = ["arm64-v8a"]
 class PackageDefaults(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    mirror: bool = True
     auto_approve: bool = False
     target_abis: list[str] = Field(default_factory=lambda: list(DEFAULT_TARGET_ABIS))
     blocked_anti_features: list[str] = Field(default_factory=list)
@@ -47,7 +46,6 @@ class TrackedPackageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     pkg: str = Field(min_length=1)
-    mirror: bool | None = None
     auto_approve: bool | None = None
     paused: bool = False
     repo_url: str | None = None
@@ -67,7 +65,6 @@ class PackagesFile(BaseModel):
             ResolvedPackage(
                 pkg=entry.pkg,
                 repo_url=entry.repo_url or self.repo.url,
-                mirror=entry.mirror if entry.mirror is not None else self.defaults.mirror,
                 auto_approve=(
                     entry.auto_approve
                     if entry.auto_approve is not None
@@ -90,7 +87,6 @@ class ResolvedPackage(BaseModel):
 
     pkg: str
     repo_url: str
-    mirror: bool
     auto_approve: bool
     paused: bool
     target_abis: list[str] = Field(default_factory=lambda: list(DEFAULT_TARGET_ABIS))

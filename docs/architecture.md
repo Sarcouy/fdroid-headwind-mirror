@@ -97,7 +97,8 @@ final String filePath = applicationVersion.getFilePath();
 if (filePath != null && !filePath.trim().isEmpty()) { /* déplacement + analyse APK */ }
 ```
 
-Une version créée avec uniquement une `url` est acceptée. Le miroir est donc un **choix**, pas une contrainte.
+Une version créée avec uniquement une `url` est acceptée : c'est le mode retenu (§8), et il dispense
+entièrement le service d'envoyer un fichier à Headwind.
 
 ---
 
@@ -114,7 +115,7 @@ flowchart LR
         FETCH["Client F-Droid<br/>index + téléchargement"]
         VERIF["Vérification<br/>sha256 + signataire + ABI"]
         PLAN["Planificateur<br/>diff des versions"]
-        PUSH["Client Headwind<br/>upload + version + liens"]
+        PUSH["Client Headwind<br/>version + liens"]
         DB[("État local<br/>SQLite")]
         REPORT["Rapport / alertes"]
     end
@@ -182,13 +183,6 @@ sequenceDiagram
             S->>F: GET de l'APK
             F-->>S: fichier APK
             S->>S: vérifier sha256 vs index
-
-            opt mode miroir
-                S->>H: POST /rest/private/web-ui-files (multipart)
-                H-->>S: chemin temporaire + métadonnées APK
-                S->>H: POST /rest/private/web-ui-files/update
-                H-->>S: URL définitive
-            end
 
             S->>H: PUT /rest/private/applications/versions
             Note over H: recalculateLatestVersion<br/>+ autoUpdate des configurations concernées
@@ -512,32 +506,26 @@ Une version en attente d'approbation est exactement celle où `last_created_vers
 last_pushed_version_code`. L'exécution suivante saute alors la création et se contente de rappeler
 l'approbation en attente dans le rapport, sans écriture.
 
-### 7.7 Quota disque en mode miroir
-
-`FilesResource` contrôle le quota disque du client avant d'accepter un envoi. Chaque version conservée occupe
-de l'espace ; une politique de rétention (conserver les N dernières versions, supprimer les plus anciennes via
-`DELETE /rest/private/applications/versions/{id}`) est nécessaire, en tenant compte du fait que la suppression
-échoue si la version est encore référencée par une configuration.
-
 ---
 
-## 8. Miroir ou URL directe
+## 8. Distribution des APK : URL directe
 
-`insertApplicationVersion` acceptant une `url` seule, les deux modes sont réalisables. Ils sont exposés comme
-une option de configuration (`mirror: true|false`), réglable globalement et par paquet.
+**Décision : Headwind n'hébergera jamais les APK.** Les versions publiées portent l'URL du dépôt F-Droid, et
+les appareils téléchargent le binaire eux-mêmes. L'option `mirror` qui exposait les deux modes a été retirée
+de la configuration et de l'état local (migration `002_drop_mirror.sql`), et l'itération 5 est abandonnée.
 
-| Critère | Miroir (APK hébergé par Headwind) | URL F-Droid directe |
-| --- | --- | --- |
-| Accès réseau des appareils | Serveur Headwind uniquement | `f-droid.org` doit être joignable depuis chaque appareil |
-| Disponibilité | Indépendante de F-Droid | Dépend de la disponibilité du dépôt |
-| Reproductibilité | L'APK exact reste disponible | Les anciennes versions migrent vers l'archive |
-| Coût disque | Proportionnel au nombre de versions conservées | Nul |
-| Complexité | Deux appels supplémentaires par version | Aucun |
+Cette décision ferme un arbitrage qui était ouvert dans la conception initiale :
 
-**Recommandation : miroir par défaut.** Dans un parc MDM, l'accès sortant des appareils est fréquemment
-restreint, et l'intérêt de maîtriser la disponibilité des binaires dépasse le coût disque. C'est aussi ce que
-suggère le nom du projet. Le mode URL directe reste utile pour un parc peu contraint ou pour une première
-mise en service rapide.
+| Critère | Conséquence du choix |
+| --- | --- |
+| Accès réseau des appareils | **`f-droid.org` doit être joignable depuis chaque appareil** — contrainte dure |
+| Disponibilité | Dépend de celle du dépôt F-Droid |
+| Reproductibilité | Les anciennes versions migrent vers l'archive du dépôt, dont l'URL diffère |
+| Coût disque côté Headwind | Nul, et son quota n'est jamais sollicité |
+| Complexité | Aucun envoi de fichier, aucune politique de rétention à tenir |
+
+Le service télécharge malgré tout les APK, mais seulement pour en vérifier l'empreinte avant publication
+(§6) : ces fichiers restent dans son cache local et ne sont jamais transmis à Headwind.
 
 ---
 
@@ -555,7 +543,6 @@ erDiagram
         int hmdm_application_id
         text repo_url
         text expected_signer
-        bool mirror
         bool auto_approve
         bool paused
         int last_seen_version_code
@@ -611,7 +598,6 @@ repo:
   fingerprint: 43238d512c1e5eb2d6569f4a3afbf5523418b82e0a3ed1552770abb9a9c9ccab
 
 defaults:
-  mirror: true
   auto_approve: false
 
 packages:
@@ -619,7 +605,6 @@ packages:
     auto_approve: true
   - pkg: com.nextcloud.client
   - pkg: org.videolan.vlc
-    mirror: false
 ```
 
 ---
@@ -701,7 +686,7 @@ et n'émet aucune écriture vers Headwind.
 | 2 ✅ | Client F-Droid + résolution de version + `sync --dry-run` | Le service dit ce qu'il mettrait à jour, sans rien écrire |
 | 3 ✅ | Vérifications (sha256, signataire, ABI) | Une divergence de signataire produit une alerte et bloque le paquet |
 | 4 ✅ | Publication d'une version (mode URL directe) | Une nouvelle version apparaît dans Headwind |
-| 5 | Mode miroir (envoi de l'APK) | L'APK est hébergé par Headwind et l'URL pointe vers lui |
+| 5 ❌ | ~~Mode miroir (envoi de l'APK)~~ | Abandonnée : Headwind n'hébergera jamais les APK (§8) |
 | 6 | Rattachement aux configurations + notification | Un appareil de test reçoit la mise à jour |
 | 7 | Ordonnancement, rapport, supervision | Exécution quotidienne autonome avec rapport exploitable |
 
@@ -765,11 +750,11 @@ contre la version réellement déployée, via son Swagger (`/swagger-ui.html`) :
    `application_id`) deviendra nécessaire.
 1. Format attendu du champ `password` sur `/rest/public/auth/login` et état de l'option `transmitPassword`.
    L'itération 1 contourne le sujet en consommant un jeton pré-obtenu.
-2. Enchaînement exact `POST /private/web-ui-files` → `POST /private/web-ui-files/update` et forme de la
-   réponse `FileUploadResult`.
-2 bis. **Contenu de `data` dans la réponse à `PUT /private/applications/versions`.** Le service suppose
-   qu'elle porte la version créée, mais accepte qu'elle soit vide ou d'une autre forme : l'écriture est
-   alors enregistrée sans contrôle de cohérence possible.
+2. **Contenu de `data` dans la réponse à `PUT /private/applications/versions`.** Le service suppose qu'elle
+   porte la version créée, mais accepte qu'elle soit vide ou d'une autre forme : l'écriture est alors
+   enregistrée sans contrôle de cohérence possible. *(Ce point remplace celui sur `FileUploadResult` et
+   l'enchaînement `POST /private/web-ui-files`, devenu sans objet : le service n'envoie aucun fichier à
+   Headwind, §8.)*
 3. Valeur de `autoUpdate` sur les configurations concernées — elle détermine si la propagation est
    automatique ou si le rattachement explicite est obligatoire. **Point le plus sensible de l'itération 4** :
    `sync --apply` affiche le nombre de configurations référençant l'application avant de créer la version,

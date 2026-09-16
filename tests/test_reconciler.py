@@ -11,7 +11,6 @@ def declared(pkg: str, paused: bool = False) -> ResolvedPackage:
     return ResolvedPackage(
         pkg=pkg,
         repo_url="https://f-droid.org/repo",
-        mirror=True,
         auto_approve=False,
         paused=paused,
     )

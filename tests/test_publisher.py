@@ -114,7 +114,6 @@ def fixture_tracked(repository: StateRepository) -> StateRepository:
     repository.upsert_tracked_package(
         "org.videolan.vlc",
         repo_url="https://f-droid.org/repo",
-        mirror=False,
         auto_approve=False,
         paused=False,
         hmdm_application_id=7,

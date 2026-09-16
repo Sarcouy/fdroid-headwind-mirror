@@ -6,6 +6,9 @@
 > filtre, Nextcloud aurait été publié en `35.0.0 RC2` au lieu de `34.1.1`. La notion de « groupe de versions »
 > envisagée en §4.2 s'est révélée inutile : filtrer les versions offrant l'ABI cible puis prendre le
 > `versionCode` maximal suffit, et supprime le besoin de regrouper par `versionName`.
+>
+> **Document d'archive.** L'option `mirror` qui apparaît dans les exemples de configuration n'existe plus :
+> Headwind n'hébergera jamais les APK et l'itération 5 est abandonnée (architecture §8).
 
 ## TL;DR
 

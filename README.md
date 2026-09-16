@@ -16,9 +16,13 @@ version candidate font l'objet d'une note séparée, [docs/iteration-2.md](docs/
 | 2 | Client F-Droid, résolution de version, `sync --dry-run` | ✅ livrée |
 | 3 | Vérifications (sha256, signataire, ABI) | ✅ livrée |
 | 4 | Publication d'une version (mode URL directe) | ✅ livrée |
-| 5 | Mode miroir (envoi de l'APK) | à faire |
+| 5 | ~~Mode miroir (envoi de l'APK)~~ | ❌ abandonnée |
 | 6 | Rattachement aux configurations et notification | à faire |
 | 7 | Ordonnancement, rapport, supervision | à faire |
+
+L'itération 5 est abandonnée : **Headwind n'hébergera jamais les APK.** Les versions publiées pointent
+vers le dépôt F-Droid et les appareils les téléchargent eux-mêmes, ce qui suppose qu'ils atteignent
+`f-droid.org`. Le service ne télécharge les APK que pour en vérifier l'empreinte avant publication.
 
 `sync --apply` est la seule commande qui écrit dans Headwind. Elle n'a jamais été exécutée contre une
 instance réelle : la publication n'est validée que face à un serveur simulé.
@@ -66,7 +70,6 @@ repo:
   fingerprint: 43238d512c1e5eb2d6569f4a3afbf5523418b82e0a3ed1552770abb9a9c9ccab
 
 defaults:
-  mirror: true
   auto_approve: false
 
 packages:
@@ -74,14 +77,12 @@ packages:
     auto_approve: true
   - pkg: com.nextcloud.client
   - pkg: org.videolan.vlc
-    mirror: false
 ```
 
 | Clé | Portée | Rôle |
 | --- | --- | --- |
 | `repo.url` | globale | Dépôt F-Droid par défaut |
-| `repo.fingerprint` | globale | Empreinte du dépôt, vérifiée à partir de l'itération 2 |
-| `mirror` | défaut ou paquet | Héberger l'APK dans Headwind plutôt que pointer vers F-Droid |
+| `repo.fingerprint` | globale | Empreinte du dépôt — déclarée mais **pas encore vérifiée**, voir plus bas |
 | `auto_approve` | défaut ou paquet | Rattacher automatiquement la nouvelle version aux configurations |
 | `target_abis` | défaut ou paquet | ABI à publier, par ordre de préférence — défaut `[arm64-v8a]` |
 | `blocked_anti_features` | défaut ou paquet | Anti-fonctionnalités écartant une version — vide par défaut |
@@ -205,9 +206,9 @@ paquet et **ne laisse aucun fichier** sur disque. La taille annoncée par l'inde
 poetry run fhm sync --apply
 ```
 
-`--apply` crée dans Headwind une version pointant directement vers l'URL du dépôt F-Droid : les appareils
-téléchargeront l'APK depuis `f-droid.org`, qui doit donc leur être accessible. L'hébergement par Headwind
-arrive à l'itération 5.
+`--apply` crée dans Headwind une version pointant directement vers l'URL du dépôt F-Droid. **Les appareils
+téléchargent eux-mêmes l'APK depuis `f-droid.org`** : c'est le mode de distribution retenu, et il suppose
+que le parc y a un accès sortant. Headwind n'hébergera jamais les APK.
 
 ```
   org.videolan.vlc 3.7.1: created - 2 configuration(s) concernee(s), latestVersion bascule

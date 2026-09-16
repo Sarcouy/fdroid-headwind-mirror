@@ -18,7 +18,6 @@ class TrackedPackage(BaseModel):
     hmdm_application_id: int | None
     repo_url: str
     expected_signer: str | None
-    mirror: bool
     auto_approve: bool
     paused: bool
     last_seen_version_code: int | None
@@ -97,7 +96,6 @@ class StateRepository:
         pkg: str,
         *,
         repo_url: str,
-        mirror: bool,
         auto_approve: bool,
         paused: bool,
         hmdm_application_id: int | None,
@@ -106,17 +104,16 @@ class StateRepository:
         with self._connection:
             self._connection.execute(
                 "INSERT INTO tracked_package ("
-                "  pkg, hmdm_application_id, repo_url, mirror, auto_approve, paused,"
+                "  pkg, hmdm_application_id, repo_url, auto_approve, paused,"
                 "  created_at, updated_at"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                ") VALUES (?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT (pkg) DO UPDATE SET "
                 "  hmdm_application_id = excluded.hmdm_application_id,"
                 "  repo_url = excluded.repo_url,"
-                "  mirror = excluded.mirror,"
                 "  auto_approve = excluded.auto_approve,"
                 "  paused = excluded.paused,"
                 "  updated_at = excluded.updated_at",
-                (pkg, hmdm_application_id, repo_url, mirror, auto_approve, paused, now, now),
+                (pkg, hmdm_application_id, repo_url, auto_approve, paused, now, now),
             )
 
     def pin_expected_signer(self, pkg: str, signer: str) -> None:
@@ -224,7 +221,6 @@ class StateRepository:
             hmdm_application_id=row["hmdm_application_id"],
             repo_url=str(row["repo_url"]),
             expected_signer=row["expected_signer"],
-            mirror=bool(row["mirror"]),
             auto_approve=bool(row["auto_approve"]),
             paused=bool(row["paused"]),
             last_seen_version_code=row["last_seen_version_code"],
