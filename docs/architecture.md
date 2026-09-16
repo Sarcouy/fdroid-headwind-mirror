@@ -700,7 +700,7 @@ et n'émet aucune écriture vers Headwind.
 | 1 ✅ | Client Headwind en lecture seule + état local + `status` | Le service liste les applications Headwind et les confronte à `packages.yaml` |
 | 2 ✅ | Client F-Droid + résolution de version + `sync --dry-run` | Le service dit ce qu'il mettrait à jour, sans rien écrire |
 | 3 ✅ | Vérifications (sha256, signataire, ABI) | Une divergence de signataire produit une alerte et bloque le paquet |
-| 4 | Publication d'une version (mode URL directe) | Une nouvelle version apparaît dans Headwind |
+| 4 ✅ | Publication d'une version (mode URL directe) | Une nouvelle version apparaît dans Headwind |
 | 5 | Mode miroir (envoi de l'APK) | L'APK est hébergé par Headwind et l'URL pointe vers lui |
 | 6 | Rattachement aux configurations + notification | Un appareil de test reçoit la mise à jour |
 | 7 | Ordonnancement, rapport, supervision | Exécution quotidienne autonome avec rapport exploitable |
@@ -708,6 +708,49 @@ et n'émet aucune écriture vers Headwind.
 Les itérations 1 à 3 n'écrivent rien dans Headwind : elles permettent de valider la lecture du parc et la
 résolution des versions sans aucun risque. L'itération 4 est le premier point où une validation sur une
 instance de recette est nécessaire.
+
+### 12.1 Ce que fait exactement l'itération 4
+
+`fhm sync --apply` enchaîne, pour chaque paquet en `UPDATE_AVAILABLE` :
+
+```mermaid
+flowchart TD
+    A[Plan: UPDATE_AVAILABLE] --> B{APK vérifié ?}
+    B -- non --> S1[IGNORÉ, aucune écriture]
+    B -- oui --> C{versionCode déjà créé ?}
+    C -- oui --> S2[IGNORÉ, idempotence]
+    C -- non --> D[GET configurations de l'application]
+    D -- échec --> S3[ÉCHEC, création annulée]
+    D -- succès --> E[PUT /private/applications/versions]
+    E -- échec --> S4[ÉCHEC]
+    E -- succès --> F[set_version_progress last_created_version_code]
+    F --> G[GET application, comparaison latestVersion]
+    G --> H[CRÉÉE]
+```
+
+Quatre décisions structurantes :
+
+1. **`--apply` impose la vérification des APK.** Le mode URL directe publie un pointeur que les appareils
+   téléchargeront eux-mêmes ; publier sans avoir calculé l'empreinte des octets servis reviendrait à
+   affirmer une intégrité jamais constatée. Un artefact non vérifié ne produit aucune écriture.
+2. **Les configurations sont lues avant la création** (§4). Une configuration portant `autoUpdate` bascule
+   sur la nouvelle version dès l'insertion : après coup, l'état antérieur n'est plus observable.
+3. **`last_created_version_code` est écrit avant le contrôle de cohérence.** Si la relecture échoue alors
+   que le `PUT` a réussi, l'absence de trace ferait republier la même version au run suivant.
+4. **`latestVersion` est relu et comparé** à l'identifiant créé. S'il n'a pas basculé, le tri par chaîne de
+   `mdm_app_version_comparison_index` (§7.4) n'a pas retenu la version : `doAutoUpdateToApplicationVersion`
+   n'a donc rien propagé, et le rattachement explicite de l'itération 6 devient obligatoire pour ce paquet.
+   Le plan continuant de proposer la mise à jour aux exécutions suivantes, le garde-fou d'idempotence
+   distingue alors « déjà créée » de « déjà créée mais non adoptée », pour que le rapport quotidien ne
+   redevienne pas silencieux sur un paquet bloqué.
+
+Un `PUT` accepté dont la réponse n'est pas exploitable (`data` absent ou d'une autre forme) est traité
+comme une création : `_put` ayant déjà levé pour une enveloppe en erreur, l'écriture a bien eu lieu. Seule
+la vérification de cohérence devient impossible. La forme exacte de cette réponse reste à confirmer (§13).
+
+Hors périmètre : `POST /private/applications/version/configurations` (itération 6), l'envoi de fichier
+(itération 5), la notification push. `auto_approve` reste sans effet fonctionnel tant que rien n'est
+rattaché — il ne prendra son sens qu'à l'itération 6.
 
 ---
 
@@ -724,8 +767,14 @@ contre la version réellement déployée, via son Swagger (`/swagger-ui.html`) :
    L'itération 1 contourne le sujet en consommant un jeton pré-obtenu.
 2. Enchaînement exact `POST /private/web-ui-files` → `POST /private/web-ui-files/update` et forme de la
    réponse `FileUploadResult`.
+2 bis. **Contenu de `data` dans la réponse à `PUT /private/applications/versions`.** Le service suppose
+   qu'elle porte la version créée, mais accepte qu'elle soit vide ou d'une autre forme : l'écriture est
+   alors enregistrée sans contrôle de cohérence possible.
 3. Valeur de `autoUpdate` sur les configurations concernées — elle détermine si la propagation est
-   automatique ou si le rattachement explicite est obligatoire.
+   automatique ou si le rattachement explicite est obligatoire. **Point le plus sensible de l'itération 4** :
+   `sync --apply` affiche le nombre de configurations référençant l'application avant de créer la version,
+   mais ne sait pas lire `autoUpdate` lui-même. Tant que cette valeur n'est pas connue sur l'instance
+   cible, considérer qu'une création de version peut déclencher un déploiement immédiat sur le parc.
 4. Disponibilité effective du service de notification push.
 5. **Vérification de l'empreinte du dépôt** (§6) — indépendante de Headwind, mais c'est le maillon manquant
    de la chaîne de confiance, à traiter avant une mise en production.

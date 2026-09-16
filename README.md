@@ -4,8 +4,9 @@
 
 Service de synchronisation des mises à jour d'applications F-Droid vers [Headwind MDM](https://h-mdm.com/).
 
-La conception complète est décrite dans [docs/architecture.md](docs/architecture.md). Le détail de
-l'itération en cours est dans [docs/iteration-2.md](docs/iteration-2.md).
+La conception complète est décrite dans [docs/architecture.md](docs/architecture.md), dont la section 12.1
+détaille le déroulé de la publication. La récupération de l'index F-Droid et la règle de sélection de la
+version candidate font l'objet d'une note séparée, [docs/iteration-2.md](docs/iteration-2.md).
 
 ## État
 
@@ -14,12 +15,13 @@ l'itération en cours est dans [docs/iteration-2.md](docs/iteration-2.md).
 | 1 | Client Headwind en lecture seule, état local, commande `status` | ✅ livrée |
 | 2 | Client F-Droid, résolution de version, `sync --dry-run` | ✅ livrée |
 | 3 | Vérifications (sha256, signataire, ABI) | ✅ livrée |
-| 4 | Publication d'une version (mode URL directe) | à faire |
+| 4 | Publication d'une version (mode URL directe) | ✅ livrée |
 | 5 | Mode miroir (envoi de l'APK) | à faire |
 | 6 | Rattachement aux configurations et notification | à faire |
 | 7 | Ordonnancement, rapport, supervision | à faire |
 
-Aucune écriture n'est effectuée dans Headwind avant l'itération 4.
+`sync --apply` est la seule commande qui écrit dans Headwind. Elle n'a jamais été exécutée contre une
+instance réelle : la publication n'est validée que face à un serveur simulé.
 
 ## Installation
 
@@ -144,7 +146,7 @@ poetry run fhm sync --dry-run
 ```
 
 La commande récupère l'index F-Droid, résout la version candidate de chaque paquet suivi et la compare à
-celle publiée dans Headwind. **Elle n'écrit rien dans Headwind** : la publication arrive à l'itération 4.
+celle publiée dans Headwind. **`--dry-run` n'écrit rien dans Headwind** — c'est le mode par défaut.
 
 ```
 Index F-Droid: 3 paquet(s) suivi(s), timestamp 1789478586569 (source CACHE)
@@ -196,6 +198,52 @@ Les APK sont conservés sous `FHM_CACHE_DIR/apk/<paquet>/<versionCode>-<abi>.apk
 empreinte reste valable — un fichier altéré est retéléchargé. Une empreinte divergente à la source refuse le
 paquet et **ne laisse aucun fichier** sur disque. La taille annoncée par l'index plafonne le transfert, ce qui
 évite qu'un miroir défaillant remplisse le cache.
+
+### Publication dans Headwind
+
+```bash
+poetry run fhm sync --apply
+```
+
+`--apply` crée dans Headwind une version pointant directement vers l'URL du dépôt F-Droid : les appareils
+téléchargeront l'APK depuis `f-droid.org`, qui doit donc leur être accessible. L'hébergement par Headwind
+arrive à l'itération 5.
+
+```
+  org.videolan.vlc 3.7.1: created - 2 configuration(s) concernee(s), latestVersion bascule
+
+1 version(s) creee(s), 0 ignoree(s), 0 en echec
+2 configuration(s) referencent ces applications: celles marquees autoUpdate deploient la nouvelle
+version sans autre action.
+```
+
+| Résultat | Signification |
+| --- | --- |
+| `created` | La version existe dans Headwind, `last_created_version_code` est enregistré |
+| `skipped` | APK non vérifié, version déjà créée, application non résolue, ou ABI sans champ Headwind |
+| `failed` | Configurations illisibles (création annulée) ou création refusée par Headwind |
+
+Une réponse acceptée mais inexploitable compte comme `created` : Headwind a écrit, seul l'identifiant
+renvoyé manque. La traiter comme un refus ferait republier la version à chaque exécution.
+
+Quatre garde-fous encadrent l'écriture :
+
+- **La vérification des APK est imposée** : `--apply` active `--verify-apk` d'office, et un artefact non
+  vérifié n'est jamais publié. Publier une URL sans avoir constaté l'empreinte des octets servis serait une
+  affirmation d'intégrité sans fondement.
+- **Les configurations sont lues avant la création**, car une configuration marquée `autoUpdate` bascule dès
+  l'insertion et l'état antérieur cesse alors d'être observable.
+- **La création est idempotente** côté service : `last_created_version_code` empêche de republier la même
+  version, Headwind ne la refusant pas de lui-même.
+- **`latestVersion` est relu après la création.** S'il n'a pas basculé, Headwind n'a rien propagé — son
+  classement de versions est textuel — et le rattachement explicite de l'itération 6 devient nécessaire.
+  Les exécutions suivantes continuent de le signaler (`rattachement explicite requis`) au lieu de retomber
+  dans un `skipped` muet.
+
+> Cette commande n'a jamais été exécutée contre une instance Headwind réelle. Elle est validée face à un
+> serveur simulé. La valeur de `autoUpdate` sur les configurations du parc reste inconnue : tant qu'elle
+> n'est pas vérifiée, considérer qu'une création de version peut déclencher un déploiement immédiat. Premier
+> usage recommandé : une instance de recette, un seul paquet sans conséquence.
 
 ### Chaîne de confiance et limite connue
 

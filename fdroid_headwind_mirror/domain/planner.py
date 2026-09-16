@@ -48,6 +48,7 @@ class PackagePlan(BaseModel):
     pkg: str
     status: PlanStatus
     detail: str = ""
+    application_id: int | None = None
     headwind_version: str | None = None
     headwind_version_code: int | None = None
     candidate_version: str | None = None
@@ -190,6 +191,7 @@ def _plan_one(
         pkg=entry.pkg,
         status=status,
         detail=_detail(status, signer_state),
+        application_id=application_id,
         headwind_version=headwind.version,
         headwind_version_code=headwind.version_code,
         candidate_version=candidate.version_name,

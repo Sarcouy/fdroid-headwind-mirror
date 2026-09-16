@@ -10,6 +10,7 @@ import pytest
 from typer.testing import CliRunner
 
 from fdroid_headwind_mirror import cli
+from fdroid_headwind_mirror.domain.verifier import VerificationSummary
 from fdroid_headwind_mirror.fdroid.client import FDroidClient
 from fdroid_headwind_mirror.headwind.client import HeadwindClient
 from fdroid_headwind_mirror.state.repository import StateRepository
@@ -87,11 +88,16 @@ HEADWIND_CALLS: list[tuple[str, str]] = []
 def headwind_handler(request: httpx.Request) -> httpx.Response:
     path = request.url.path
     HEADWIND_CALLS.append((request.method, path))
+    if request.method == "PUT" and path.endswith("/applications/versions"):
+        return envelope({**json.loads(request.content), "id": 700})
     if path.endswith("/applications/search"):
         return envelope(APPLICATIONS)
     for app_id, versions in VERSIONS.items():
         if path.endswith(f"/applications/{app_id}/versions"):
             return envelope(versions)
+    for application in APPLICATIONS:
+        if path.endswith(f"/applications/{application['id']}"):
+            return envelope({**application, "latestVersion": 700})
     return envelope([])
 
 
@@ -227,11 +233,38 @@ def test_exit_code_reflects_rejections() -> None:
 
 
 @pytest.mark.usefixtures("workspace")
-def test_apply_is_refused_before_iteration_four() -> None:
+def test_apply_writes_nothing_when_the_apk_cannot_be_verified() -> None:
     result = runner.invoke(cli.app, ["sync", "--apply"])
 
-    assert result.exit_code == 2
-    assert "iteration 4" in result.stderr
+    assert {method for method, _ in HEADWIND_CALLS} == {"GET"}
+    assert result.exit_code == 1
+
+
+def fake_verification(
+    _settings: Any, _packages: Any, plan: Any, _repository: Any, _run_id: int
+) -> VerificationSummary:
+    for entry in plan.packages:
+        for artifact in entry.artifacts:
+            artifact.verified = True
+    return VerificationSummary(verified=1)
+
+
+def test_apply_creates_the_version_and_records_it(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli, "_verify_apks", fake_verification)
+
+    result = runner.invoke(cli.app, ["sync", "--apply"])
+
+    assert [path for method, path in HEADWIND_CALLS if method == "PUT"] == [
+        "/rest/private/applications/versions"
+    ]
+    assert "1 version(s) creee(s)" in result.stdout
+    assert "autoUpdate" in result.stdout
+    with StateRepository(workspace / "state.db") as repository:
+        tracked = repository.get_tracked_package("org.videolan.vlc")
+        assert tracked is not None
+        assert tracked.last_created_version_code == 13070106
 
 
 def test_second_run_reuses_the_cache(workspace: Path) -> None:

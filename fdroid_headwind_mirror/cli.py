@@ -20,6 +20,11 @@ from fdroid_headwind_mirror.domain.planner import (
     SyncPlan,
     build_plan,
 )
+from fdroid_headwind_mirror.domain.publisher import (
+    PublicationOutcome,
+    PublicationSummary,
+    publish_plan,
+)
 from fdroid_headwind_mirror.domain.reconciler import (
     PackageReport,
     PackageStatus,
@@ -115,19 +120,12 @@ def sync(
         bool,
         typer.Option(
             "--verify-apk",
-            help="Telecharge les APK a publier et verifie leur empreinte sha256.",
+            help="Telecharge les APK a publier et verifie leur empreinte sha256"
+            " (implicite avec --apply).",
         ),
     ] = False,
 ) -> None:
     """Confronte les versions F-Droid aux versions publiees dans Headwind."""
-    if not dry_run:
-        typer.secho(
-            "La publication vers Headwind arrive a l'iteration 4. Utilisez --dry-run.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=2)
-
     settings = _load_settings()
     packages = _load_packages(settings)
     declared = packages.resolved()
@@ -136,9 +134,14 @@ def sync(
         run_id = repository.start_run()
         try:
             plan = _build_sync_plan(settings, packages, declared, repository, run_id)
+            # Publier une URL sans avoir verifie les octets qu'elle sert reviendrait a faire
+            # confiance au depot sur parole: --apply impose donc la verification.
             verification = (
-                _verify_apks(settings, packages, plan, repository, run_id) if verify_apk else None
+                _verify_apks(settings, packages, plan, repository, run_id)
+                if verify_apk or not dry_run
+                else None
             )
+            publication = None if dry_run else _publish(settings, plan, repository, run_id)
         except HeadwindPermissionError as exc:
             _fail(repository, run_id, "headwind.permission_denied", exc, _PERMISSION_MESSAGE)
         except HeadwindError as exc:
@@ -146,11 +149,13 @@ def sync(
         except FDroidError as exc:
             _fail(repository, run_id, "fdroid.unavailable", exc, f"Depot F-Droid: {exc}")
 
+        errors = plan.rejections + (publication.failed if publication else 0)
         repository.finish_run(
             run_id,
-            "OK" if plan.rejections == 0 else "WARNING",
+            "OK" if errors == 0 else "WARNING",
             packages_checked=len(plan.packages),
-            errors=plan.rejections,
+            versions_created=publication.created if publication else 0,
+            errors=errors,
         )
 
     if as_json:
@@ -158,11 +163,14 @@ def sync(
         payload["verification"] = (
             verification.model_dump(mode="json") if verification is not None else None
         )
+        payload["publication"] = (
+            publication.model_dump(mode="json") if publication is not None else None
+        )
         typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
-        _render_plan(plan, verification)
+        _render_plan(plan, verification, publication)
 
-    raise typer.Exit(code=1 if plan.rejections else 0)
+    raise typer.Exit(code=1 if errors else 0)
 
 
 def _build_sync_plan(
@@ -203,6 +211,17 @@ def _verify_apks(
         return verify_plan(plan, client, store, repository, run_id=run_id)
 
 
+def _publish(
+    settings: Settings, plan: SyncPlan, repository: StateRepository, run_id: int
+) -> PublicationSummary:
+    with HeadwindClient(
+        base_url=settings.headwind_url,
+        token=settings.headwind_token,
+        timeout=settings.request_timeout,
+    ) as client:
+        return publish_plan(plan, client, repository, run_id=run_id)
+
+
 def _refresh_index(
     settings: Settings,
     packages: PackagesFile,
@@ -232,7 +251,11 @@ def _fail(
     raise typer.Exit(code=2) from exc
 
 
-def _render_plan(plan: SyncPlan, verification: VerificationSummary | None = None) -> None:
+def _render_plan(
+    plan: SyncPlan,
+    verification: VerificationSummary | None = None,
+    publication: PublicationSummary | None = None,
+) -> None:
     typer.echo(
         f"Index F-Droid: {plan.index_package_count} paquet(s) suivi(s),"
         f" timestamp {plan.index_timestamp} (source {plan.index_source})\n"
@@ -260,7 +283,39 @@ def _render_plan(plan: SyncPlan, verification: VerificationSummary | None = None
             f" telecharges: {_human_size(verification.downloaded_bytes)},"
             f" reutilises: {_human_size(verification.reused_bytes)}"
         )
-    typer.secho("Aucune ecriture effectuee (--dry-run)", fg=typer.colors.BLUE)
+    if publication is None:
+        typer.secho("Aucune ecriture effectuee (--dry-run)", fg=typer.colors.BLUE)
+        return
+    _render_publication(publication)
+
+
+def _render_publication(publication: PublicationSummary) -> None:
+    typer.echo("")
+    for entry in publication.entries:
+        label = f"{entry.pkg} {entry.version or ''}".strip()
+        typer.secho(
+            f"  {label}: {entry.outcome.value.lower()} - {entry.detail}",
+            fg=_publication_colour(entry.outcome),
+        )
+    typer.secho(
+        f"\n{publication.created} version(s) creee(s),"
+        f" {publication.skipped} ignoree(s), {publication.failed} en echec",
+        fg=typer.colors.RED if publication.failed else typer.colors.GREEN,
+    )
+    if publication.created:
+        typer.secho(
+            f"{publication.configurations} configuration(s) referencent ces applications:"
+            " celles marquees autoUpdate deploient la nouvelle version sans autre action.",
+            fg=typer.colors.YELLOW,
+        )
+
+
+def _publication_colour(outcome: PublicationOutcome) -> str:
+    if outcome is PublicationOutcome.CREATED:
+        return typer.colors.GREEN
+    if outcome is PublicationOutcome.FAILED:
+        return typer.colors.RED
+    return typer.colors.YELLOW
 
 
 def _human_size(size: int) -> str:

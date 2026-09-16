@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from types import TracebackType
 from typing import Any, Self, TypeVar
 
@@ -16,6 +17,7 @@ from fdroid_headwind_mirror.headwind.models import (
     Application,
     ApplicationConfigurationLink,
     ApplicationVersion,
+    NewApplicationVersion,
     ResponseStatus,
 )
 
@@ -82,9 +84,28 @@ class HeadwindClient:
         path = f"/private/applications/configurations/{application_id}"
         return self._parse(list[ApplicationConfigurationLink], self._get(path), path)
 
-    def _get(self, path: str) -> Any:
+    def create_application_version(
+        self, version: NewApplicationVersion
+    ) -> ApplicationVersion | None:
+        # None distingue "creee mais reponse inexploitable" de "refusee": _put leve deja pour une
+        # enveloppe en erreur, donc arriver ici signifie que Headwind a accepte l'ecriture. Le
+        # rendre indistinct d'un refus ferait republier la version au run suivant.
+        path = "/private/applications/versions"
+        payload = self._put(path, version.payload())
         try:
-            response = self._client.get(path)
+            return self._parse(ApplicationVersion, payload, path)
+        except HeadwindApiError:
+            return None
+
+    def _get(self, path: str) -> Any:
+        return self._send(path, lambda: self._client.get(path))
+
+    def _put(self, path: str, body: dict[str, object]) -> Any:
+        return self._send(path, lambda: self._client.put(path, json=body))
+
+    def _send(self, path: str, call: Callable[[], httpx.Response]) -> Any:
+        try:
+            response = call()
         except httpx.HTTPError as exc:
             raise HeadwindTransportError(f"{path}: {exc}") from exc
 

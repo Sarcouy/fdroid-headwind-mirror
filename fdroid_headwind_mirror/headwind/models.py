@@ -42,6 +42,19 @@ class ApplicationVersion(HeadwindModel):
     url_arm64: str | None = Field(default=None, alias="urlArm64")
 
 
+class NewApplicationVersion(HeadwindModel):
+    application_id: int = Field(alias="applicationId")
+    version: str
+    version_code: int = Field(alias="versionCode")
+    split: bool = False
+    url: str | None = None
+    url_armeabi: str | None = Field(default=None, alias="urlArmeabi")
+    url_arm64: str | None = Field(default=None, alias="urlArm64")
+
+    def payload(self) -> dict[str, object]:
+        return self.model_dump(by_alias=True, exclude_none=True)
+
+
 class ApplicationConfigurationLink(HeadwindModel):
     id: int | None = None
     configuration_id: int = Field(alias="configurationId")
