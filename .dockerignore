@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+.cache
+.pytest_cache
+**/__pycache__
+tests
+tools
+docs
+deploy
+*.md
+.env
+state.db
+packages.yaml

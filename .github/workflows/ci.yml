@@ -44,3 +44,20 @@ jobs:
 
       - name: Run static analysis
         run: poetry run pylint fdroid_headwind_mirror tests tools
+
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t fdroid-headwind-mirror:ci .
+      - name: Check that the entrypoint runs as a non-root user
+        run: |
+          # -u belongs to id, after the image name: before it, docker run reads
+          # it as --user and the command fails with empty output, which a
+          # comparison against "0" would happily accept.
+          uid="$(docker run --rm --entrypoint id fdroid-headwind-mirror:ci -u)"
+          echo "container uid: ${uid}"
+          test -n "${uid}" && test "${uid}" -ne 0
+          docker run --rm fdroid-headwind-mirror:ci --help
