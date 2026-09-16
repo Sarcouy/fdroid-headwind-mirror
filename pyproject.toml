@@ -39,7 +39,9 @@ target-version = ["py312"]
 testpaths = ["tests"]
 
 [tool.pylint.main]
-ignore-paths = ["^\\.venv/.*$"]
+# Le motif doit couvrir le chemin relatif comme absolu: en CI le repertoire de travail
+# est absolu, et un motif ancre sur ".venv" en debut de chaine n'y correspond plus.
+ignore-paths = ["(^|.*/)\\.venv/.*$"]
 
 [tool.pylint.format]
 max-line-length = 100

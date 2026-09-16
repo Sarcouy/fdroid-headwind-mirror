@@ -6,9 +6,14 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -38,4 +43,4 @@ jobs:
         run: poetry run black --check .
 
       - name: Run static analysis
-        run: poetry run pylint .
+        run: poetry run pylint fdroid_headwind_mirror tests tools
