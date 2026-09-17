@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from types import TracebackType
 from typing import Any, Self, TypeVar
@@ -10,6 +11,7 @@ from pydantic import TypeAdapter, ValidationError
 from fdroid_headwind_mirror.headwind.errors import (
     PERMISSION_DENIED_MESSAGE,
     HeadwindApiError,
+    HeadwindCredentialsError,
     HeadwindPermissionError,
     HeadwindTransportError,
 )
@@ -24,6 +26,7 @@ from fdroid_headwind_mirror.headwind.models import (
 T = TypeVar("T")
 
 _REST_PREFIX = "/rest"
+_LOGIN_PATH = "/public/jwt/login"
 
 
 def normalise_base_url(base_url: str) -> str:
@@ -33,21 +36,32 @@ def normalise_base_url(base_url: str) -> str:
     return f"{trimmed}{_REST_PREFIX}"
 
 
+def password_digest(password: str) -> str:
+    # Headwind compare SHA1(MD5(motdepasse) + sel) au mot de passe stocke: le MD5 est impose par
+    # le protocole, pas choisi pour proteger le secret. La casse compte, CryptoUtil.getHexString
+    # produit des majuscules et un digest minuscule donnerait un SHA1 different, donc un 401.
+    return hashlib.md5(password.encode("utf-8"), usedforsecurity=False).hexdigest().upper()
+
+
 class HeadwindClient:
     def __init__(
         self,
         base_url: str,
-        token: str,
+        login: str,
+        password: str,
+        *,
         timeout: float = 30.0,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self._base_url = normalise_base_url(base_url)
+        self._login = login
+        # Seule l'empreinte est conservee: le mot de passe en clair ne survit pas au constructeur
+        # et ne peut donc pas fuir dans une trace ou un repr d'instance.
+        self._digest = password_digest(password)
+        self._authenticated = False
         self._client = httpx.Client(
             base_url=self._base_url,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/json",
-            },
+            headers={"Accept": "application/json"},
             timeout=httpx.Timeout(timeout),
             transport=transport,
         )
@@ -123,7 +137,39 @@ class HeadwindClient:
     def _post(self, path: str, body: dict[str, object]) -> Any:
         return self._send(path, lambda: self._client.post(path, json=body))
 
+    def _authenticate(self) -> None:
+        # Le jeton vaut 24 h par defaut (jwt.validity) la ou un run dure quelques minutes: une
+        # seule authentification par client suffit, sans renouvellement en cours de route.
+        if self._authenticated:
+            return
+
+        try:
+            response = self._client.post(
+                _LOGIN_PATH, json={"login": self._login, "password": self._digest}
+            )
+        except httpx.HTTPError as exc:
+            raise HeadwindTransportError(f"{_LOGIN_PATH}: {exc}") from exc
+
+        if response.status_code == httpx.codes.UNAUTHORIZED:
+            raise HeadwindCredentialsError(self._login)
+        if response.status_code >= 400:
+            raise HeadwindTransportError(f"{_LOGIN_PATH}: HTTP {response.status_code}")
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise HeadwindTransportError(f"{_LOGIN_PATH}: reponse non JSON") from exc
+
+        token = payload.get("id_token") if isinstance(payload, dict) else None
+        if not isinstance(token, str) or not token:
+            raise HeadwindTransportError(f"{_LOGIN_PATH}: jeton absent de la reponse")
+
+        self._client.headers["Authorization"] = f"Bearer {token}"
+        self._authenticated = True
+
     def _send(self, path: str, call: Callable[[], httpx.Response]) -> Any:
+        self._authenticate()
+
         try:
             response = call()
         except httpx.HTTPError as exc:

@@ -14,7 +14,7 @@ from fdroid_headwind_mirror.domain.verifier import VerificationSummary
 from fdroid_headwind_mirror.fdroid.client import FDroidClient
 from fdroid_headwind_mirror.headwind.client import HeadwindClient
 from fdroid_headwind_mirror.state.repository import StateRepository
-from tests.conftest import envelope
+from tests.conftest import envelope, login_response
 
 runner = CliRunner(mix_stderr=False)
 
@@ -87,6 +87,9 @@ CREATED_VERSIONS: list[dict[str, Any]] = []
 
 
 def headwind_handler(request: httpx.Request) -> httpx.Response:
+    login = login_response(request)
+    if login is not None:
+        return login
     path = request.url.path
     HEADWIND_CALLS.append((request.method, path))
     if request.method == "PUT" and path.endswith("/applications/versions"):
@@ -121,15 +124,19 @@ def fixture_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     CREATED_VERSIONS.clear()
     (tmp_path / "packages.yaml").write_text(PACKAGES, encoding="utf-8")
     monkeypatch.setenv("FHM_HEADWIND_URL", "https://mdm.example.org")
-    monkeypatch.setenv("FHM_HEADWIND_TOKEN", "token")
+    monkeypatch.setenv("FHM_HEADWIND_LOGIN", "service")
+    monkeypatch.setenv("FHM_HEADWIND_PASSWORD", "secret")
     monkeypatch.setenv("FHM_PACKAGES_FILE", str(tmp_path / "packages.yaml"))
     monkeypatch.setenv("FHM_DATABASE_PATH", str(tmp_path / "state.db"))
     monkeypatch.setenv("FHM_CACHE_DIR", str(tmp_path / "cache"))
 
-    def headwind_factory(base_url: str, token: str, timeout: float) -> HeadwindClient:
+    def headwind_factory(
+        base_url: str, login: str, password: str, timeout: float
+    ) -> HeadwindClient:
         return HeadwindClient(
             base_url=base_url,
-            token=token,
+            login=login,
+            password=password,
             timeout=timeout,
             transport=httpx.MockTransport(headwind_handler),
         )
@@ -209,6 +216,9 @@ def test_unreadable_headwind_versions_do_not_become_an_update(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def failing(request: httpx.Request) -> httpx.Response:
+        login = login_response(request)
+        if login is not None:
+            return login
         if request.url.path.endswith("/applications/search"):
             return envelope(APPLICATIONS)
         return envelope(None, status="ERROR", message="error.internal.server")
@@ -216,9 +226,10 @@ def test_unreadable_headwind_versions_do_not_become_an_update(
     monkeypatch.setattr(
         cli,
         "HeadwindClient",
-        lambda base_url, token, timeout: HeadwindClient(
+        lambda base_url, login, password, timeout: HeadwindClient(
             base_url=base_url,
-            token=token,
+            login=login,
+            password=password,
             timeout=timeout,
             transport=httpx.MockTransport(failing),
         ),

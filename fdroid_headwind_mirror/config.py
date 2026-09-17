@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="FHM_", env_file=".env", extra="ignore")
 
     headwind_url: str
-    headwind_token: str
+    headwind_login: str
+    headwind_password: SecretStr
     packages_file: Path = Path("packages.yaml")
     database_path: Path = Path("state.db")
     cache_dir: Path = Path(".cache")

@@ -21,7 +21,8 @@ def fixture_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "repo:\n  url: https://f-droid.org/repo\npackages: []\n", encoding="utf-8"
     )
     monkeypatch.setenv("FHM_HEADWIND_URL", "https://mdm.example.org")
-    monkeypatch.setenv("FHM_HEADWIND_TOKEN", "token")
+    monkeypatch.setenv("FHM_HEADWIND_LOGIN", "service")
+    monkeypatch.setenv("FHM_HEADWIND_PASSWORD", "secret")
     monkeypatch.setenv("FHM_PACKAGES_FILE", str(tmp_path / "packages.yaml"))
     monkeypatch.setenv("FHM_DATABASE_PATH", str(tmp_path / "state.db"))
     monkeypatch.setenv("FHM_CACHE_DIR", str(tmp_path / "cache"))

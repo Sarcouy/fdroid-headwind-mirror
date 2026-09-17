@@ -40,7 +40,11 @@ from fdroid_headwind_mirror.fdroid.cache import IndexCache, IndexRefresh, refres
 from fdroid_headwind_mirror.fdroid.client import FDroidClient, FDroidError
 from fdroid_headwind_mirror.fdroid.download import ApkStore
 from fdroid_headwind_mirror.headwind.client import HeadwindClient
-from fdroid_headwind_mirror.headwind.errors import HeadwindError, HeadwindPermissionError
+from fdroid_headwind_mirror.headwind.errors import (
+    HeadwindCredentialsError,
+    HeadwindError,
+    HeadwindPermissionError,
+)
 from fdroid_headwind_mirror.reporting.report import RunReport, build_report
 from fdroid_headwind_mirror.state.repository import StateRepository, SyncRun
 
@@ -64,8 +68,11 @@ _PLAN_LABEL: dict[PlanStatus, str] = {
 }
 
 _PERMISSION_MESSAGE = (
-    "Acces refuse par Headwind: l'utilisateur de service doit disposer de la"
-    " permission 'applications'."
+    "Acces refuse par Headwind: l'utilisateur de service doit avoir le role Utilisateur."
+)
+
+_CREDENTIALS_MESSAGE = (
+    "Authentification refusee par Headwind: verifier FHM_HEADWIND_LOGIN et FHM_HEADWIND_PASSWORD."
 )
 
 
@@ -103,12 +110,10 @@ def status(
     with StateRepository(settings.database_path) as repository:
         run_id = repository.start_run()
         try:
-            with HeadwindClient(
-                base_url=settings.headwind_url,
-                token=settings.headwind_token,
-                timeout=settings.request_timeout,
-            ) as client:
+            with _headwind_client(settings) as client:
                 applications = client.list_applications()
+        except HeadwindCredentialsError as exc:
+            _fail(repository, run_id, "headwind.credentials_refused", exc, _CREDENTIALS_MESSAGE)
         except HeadwindPermissionError as exc:
             _fail(repository, run_id, "headwind.permission_denied", exc, _PERMISSION_MESSAGE)
         except HeadwindError as exc:
@@ -164,6 +169,8 @@ def sync(
             publication, linking = (
                 (None, None) if dry_run else _apply(settings, plan, repository, run_id)
             )
+        except HeadwindCredentialsError as exc:
+            _fail(repository, run_id, "headwind.credentials_refused", exc, _CREDENTIALS_MESSAGE)
         except HeadwindPermissionError as exc:
             _fail(repository, run_id, "headwind.permission_denied", exc, _PERMISSION_MESSAGE)
         except HeadwindError as exc:
@@ -327,11 +334,7 @@ def _build_sync_plan(
     repository: StateRepository,
     run_id: int,
 ) -> SyncPlan:
-    with HeadwindClient(
-        base_url=settings.headwind_url,
-        token=settings.headwind_token,
-        timeout=settings.request_timeout,
-    ) as client:
+    with _headwind_client(settings) as client:
         reconciliation = reconcile(declared, client.list_applications(), repository, run_id)
         refresh = _refresh_index(settings, packages, declared, repository, run_id)
         return build_plan(
@@ -361,11 +364,7 @@ def _verify_apks(
 def _apply(
     settings: Settings, plan: SyncPlan, repository: StateRepository, run_id: int
 ) -> tuple[PublicationSummary, LinkingSummary]:
-    with HeadwindClient(
-        base_url=settings.headwind_url,
-        token=settings.headwind_token,
-        timeout=settings.request_timeout,
-    ) as client:
+    with _headwind_client(settings) as client:
         publication = publish_plan(plan, client, repository, run_id=run_id)
         return publication, link_plan(plan, client, repository, run_id=run_id)
 
@@ -575,6 +574,15 @@ def _load_settings() -> Settings:
             f"Configuration d'environnement incomplete:\n{exc}", fg=typer.colors.RED, err=True
         )
         raise typer.Exit(code=2) from exc
+
+
+def _headwind_client(settings: Settings) -> HeadwindClient:
+    return HeadwindClient(
+        base_url=settings.headwind_url,
+        login=settings.headwind_login,
+        password=settings.headwind_password.get_secret_value(),
+        timeout=settings.request_timeout,
+    )
 
 
 def _load_packages(settings: Settings) -> PackagesFile:

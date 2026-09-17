@@ -8,19 +8,27 @@ from typing import Any
 
 import httpx
 
-from fdroid_headwind_mirror.headwind.client import normalise_base_url
+from fdroid_headwind_mirror.headwind.client import normalise_base_url, password_digest
 
 PAGE_SIZE = 200
 MAX_PAGES = 200
 
 
-def fetch_devices(base_url: str, token: str) -> list[dict[str, Any]]:
+def fetch_devices(base_url: str, login: str, password: str) -> list[dict[str, Any]]:
     devices: list[dict[str, Any]] = []
     with httpx.Client(
         base_url=normalise_base_url(base_url),
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+        headers={"Accept": "application/json"},
         timeout=httpx.Timeout(60.0),
     ) as client:
+        response = client.post(
+            "/public/jwt/login", json={"login": login, "password": password_digest(password)}
+        )
+        if response.status_code == httpx.codes.UNAUTHORIZED:
+            raise SystemExit("Identifiants refuses par Headwind")
+        response.raise_for_status()
+        client.headers["Authorization"] = f"Bearer {response.json()['id_token']}"
+
         for page in range(1, MAX_PAGES + 1):
             response = client.post(
                 "/private/devices/search", json={"pageNum": page, "pageSize": PAGE_SIZE}
@@ -87,11 +95,14 @@ def render(devices: list[dict[str, Any]]) -> None:
 
 def main() -> None:
     base_url = os.environ.get("FHM_HEADWIND_URL")
-    token = os.environ.get("FHM_HEADWIND_TOKEN")
-    if not base_url or not token:
-        raise SystemExit("FHM_HEADWIND_URL et FHM_HEADWIND_TOKEN doivent etre definis")
+    login = os.environ.get("FHM_HEADWIND_LOGIN")
+    password = os.environ.get("FHM_HEADWIND_PASSWORD")
+    if not base_url or not login or not password:
+        raise SystemExit(
+            "FHM_HEADWIND_URL, FHM_HEADWIND_LOGIN et FHM_HEADWIND_PASSWORD doivent etre definis"
+        )
     try:
-        devices = fetch_devices(base_url, token)
+        devices = fetch_devices(base_url, login, password)
     except httpx.HTTPError as exc:
         raise SystemExit(f"Headwind injoignable: {exc}") from exc
     render(devices)
