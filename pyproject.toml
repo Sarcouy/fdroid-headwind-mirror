@@ -1,6 +1,6 @@
 [project]
 name = "fdroid-headwind-mirror"
-version = "0.1.0"
+version = "0.2.0"
 description = "Synchronise les mises à jour d'applications F-Droid vers Headwind MDM"
 requires-python = ">=3.12,<4.0"
 dependencies = [

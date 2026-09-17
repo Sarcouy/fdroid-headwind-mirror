@@ -300,6 +300,9 @@ JWT obtenu en `Authorization: Bearer` pour tous les appels suivants.
 ```
 
 Le serveur répond `{"id_token": "..."}`, et répète le jeton dans un en-tête `Authorization` de réponse.
+Le compte n'a pas besoin de s'être connecté au panneau au préalable : si son `authToken` est vide, cette
+première connexion le génère via `UPDATE users SET password = <valeur déjà stockée>, authToken = ...`,
+sans donc toucher au mot de passe.
 
 Trois propriétés de ce point d'entrée conditionnent l'implémentation :
 
