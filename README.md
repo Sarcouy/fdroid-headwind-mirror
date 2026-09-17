@@ -57,6 +57,8 @@ Créez un utilisateur de service dans le panneau Headwind avec le rôle **User**
 portent `edit_application_versions`, mais « User » laisse de côté l'accès aux paramètres système —
 l'interface expose des rôles, pas les permissions nommées dans le tableau de la section 5 de la conception.
 
+Son nom est libre : le service ne présume d'aucun identifiant et utilise celui que vous déclarez.
+
 Son identifiant et son mot de passe suffisent : au premier appel, le service les échange contre un JWT sur
 `POST /rest/public/jwt/login`, puis présente ce jeton en `Authorization: Bearer` pendant toute l'exécution.
 Le mot de passe n'est jamais journalisé et ne quitte le processus que sous forme d'empreinte MD5, seul
