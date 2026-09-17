@@ -154,3 +154,28 @@ def test_status_reports_ambiguity(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "AMBIGU" in result.stdout
     assert "candidat #7" in result.stdout
     assert "candidat #9" in result.stdout
+
+
+@pytest.mark.usefixtures("workspace")
+def test_status_reports_refused_credentials_distinctly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(401)
+
+    def factory(base_url: str, login: str, password: str, timeout: float) -> HeadwindClient:
+        return HeadwindClient(
+            base_url=base_url,
+            login=login,
+            password=password,
+            timeout=timeout,
+            transport=httpx.MockTransport(handler),
+        )
+
+    monkeypatch.setattr(cli, "HeadwindClient", factory)
+
+    result = runner.invoke(cli.app, ["status"])
+
+    assert result.exit_code == 2
+    assert "FHM_HEADWIND_PASSWORD" in result.stderr
+    assert "injoignable" not in result.stderr
