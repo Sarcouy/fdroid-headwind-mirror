@@ -52,9 +52,22 @@ Elles peuvent aussi être placées dans un fichier `.env` à la racine.
 
 ### Jeton Headwind
 
-Le service n'implémente pas l'authentification par mot de passe. Créez un utilisateur de service dans
-Headwind, disposant au minimum de la permission `applications`, et récupérez son `authToken` — celui-ci est
-persistant. Le jeton n'est jamais journalisé.
+Le service n'implémente pas l'authentification par mot de passe : il consomme un `authToken`, qui n'est
+jamais journalisé.
+
+Créez un utilisateur de service dans le panneau Headwind avec le rôle **User**, et non Admin. Les deux
+portent `edit_application_versions`, mais « User » laisse de côté l'accès aux paramètres système —
+l'interface expose des rôles, pas les permissions nommées dans le tableau de la section 5 de la conception.
+
+**Le jeton n'existe qu'après une première connexion de ce compte.** Le serveur le génère au login lorsqu'il
+est vide, puis le conserve ; le panneau ne l'affiche nulle part. Il se lit donc en base :
+
+```bash
+docker compose exec -T hmdm-db psql -U hmdm -d hmdm -t -A \
+  -c "SELECT authtoken FROM users WHERE login='fdroid-mirror';"
+```
+
+Un résultat vide signifie que le compte ne s'est jamais connecté.
 
 ### Fichier `packages.yaml`
 

@@ -822,8 +822,10 @@ contre la version réellement déployée, via son Swagger (`/swagger-ui.html`) :
    (statut `AMBIGU`, aucune résolution automatique). Reste à voir sa fréquence réelle sur le parc : si elle
    est courante, un critère de désambiguïsation explicite dans `packages.yaml` (par exemple
    `application_id`) deviendra nécessaire.
-1. Format attendu du champ `password` sur `/rest/public/auth/login` et état de l'option `transmitPassword`.
-   L'itération 1 contourne le sujet en consommant un jeton pré-obtenu.
+1. ~~Format attendu du champ `password` sur `/rest/public/auth/login` et état de l'option
+   `transmitPassword`.~~ **Sans objet** : le service consomme un `authToken` lu en base, et ne se connecte
+   jamais par mot de passe. Une connexion humaine au panneau reste nécessaire une fois, pour que le serveur
+   génère ce jeton.
 2. **Contenu de `data` dans la réponse à `PUT /private/applications/versions`.** Le service suppose qu'elle
    porte la version créée, mais accepte qu'elle soit vide ou d'une autre forme : l'écriture est alors
    enregistrée sans contrôle de cohérence possible. *(Ce point remplace celui sur `FileUploadResult` et
