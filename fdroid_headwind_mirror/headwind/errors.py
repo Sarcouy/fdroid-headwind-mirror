@@ -23,4 +23,10 @@ class HeadwindPermissionError(HeadwindApiError):
     pass
 
 
+class HeadwindCredentialsError(HeadwindError):
+    def __init__(self, login: str) -> None:
+        super().__init__(f"identifiants refuses par Headwind pour l'utilisateur {login}")
+        self.login = login
+
+
 PERMISSION_DENIED_MESSAGE = "error.permission.denied"

@@ -12,7 +12,7 @@ from typer.testing import CliRunner
 from fdroid_headwind_mirror import cli
 from fdroid_headwind_mirror.fdroid.client import FDroidClient
 from fdroid_headwind_mirror.headwind.client import HeadwindClient
-from tests.conftest import envelope
+from tests.conftest import envelope, login_response
 
 runner = CliRunner(mix_stderr=False)
 
@@ -88,6 +88,9 @@ class FDroidStub:
 
 
 def headwind_handler(request: httpx.Request) -> httpx.Response:
+    login = login_response(request)
+    if login is not None:
+        return login
     HEADWIND_CALLS.append(request.method)
     if request.url.path.endswith("/applications/search"):
         return envelope(APPLICATIONS)
@@ -101,7 +104,8 @@ def fixture_stub(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FDroidStub:
     HEADWIND_CALLS.clear()
     (tmp_path / "packages.yaml").write_text(PACKAGES, encoding="utf-8")
     monkeypatch.setenv("FHM_HEADWIND_URL", "https://mdm.example.org")
-    monkeypatch.setenv("FHM_HEADWIND_TOKEN", "token")
+    monkeypatch.setenv("FHM_HEADWIND_LOGIN", "service")
+    monkeypatch.setenv("FHM_HEADWIND_PASSWORD", "secret")
     monkeypatch.setenv("FHM_PACKAGES_FILE", str(tmp_path / "packages.yaml"))
     monkeypatch.setenv("FHM_DATABASE_PATH", str(tmp_path / "state.db"))
     monkeypatch.setenv("FHM_CACHE_DIR", str(tmp_path / "cache"))
@@ -110,9 +114,10 @@ def fixture_stub(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FDroidStub:
     monkeypatch.setattr(
         cli,
         "HeadwindClient",
-        lambda base_url, token, timeout: HeadwindClient(
+        lambda base_url, login, password, timeout: HeadwindClient(
             base_url=base_url,
-            token=token,
+            login=login,
+            password=password,
             timeout=timeout,
             transport=httpx.MockTransport(headwind_handler),
         ),

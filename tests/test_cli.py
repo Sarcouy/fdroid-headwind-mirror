@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 
 from fdroid_headwind_mirror import cli
 from fdroid_headwind_mirror.headwind.client import HeadwindClient
-from tests.conftest import Handler, application_payload, envelope
+from tests.conftest import Handler, application_payload, envelope, login_response
 
 runner = CliRunner(mix_stderr=False)
 
@@ -26,19 +26,24 @@ packages:
 def fixture_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (tmp_path / "packages.yaml").write_text(PACKAGES, encoding="utf-8")
     monkeypatch.setenv("FHM_HEADWIND_URL", "https://mdm.example.org")
-    monkeypatch.setenv("FHM_HEADWIND_TOKEN", "token")
+    monkeypatch.setenv("FHM_HEADWIND_LOGIN", "service")
+    monkeypatch.setenv("FHM_HEADWIND_PASSWORD", "secret")
     monkeypatch.setenv("FHM_PACKAGES_FILE", str(tmp_path / "packages.yaml"))
     monkeypatch.setenv("FHM_DATABASE_PATH", str(tmp_path / "state.db"))
     return tmp_path
 
 
 def install_transport(monkeypatch: pytest.MonkeyPatch, handler: Handler) -> None:
-    def factory(base_url: str, token: str, timeout: float) -> HeadwindClient:
+    def routed(request: httpx.Request) -> httpx.Response:
+        return login_response(request) or handler(request)
+
+    def factory(base_url: str, login: str, password: str, timeout: float) -> HeadwindClient:
         return HeadwindClient(
             base_url=base_url,
-            token=token,
+            login=login,
+            password=password,
             timeout=timeout,
-            transport=httpx.MockTransport(handler),
+            transport=httpx.MockTransport(routed),
         )
 
     monkeypatch.setattr(cli, "HeadwindClient", factory)
@@ -149,3 +154,28 @@ def test_status_reports_ambiguity(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "AMBIGU" in result.stdout
     assert "candidat #7" in result.stdout
     assert "candidat #9" in result.stdout
+
+
+@pytest.mark.usefixtures("workspace")
+def test_status_reports_refused_credentials_distinctly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(401)
+
+    def factory(base_url: str, login: str, password: str, timeout: float) -> HeadwindClient:
+        return HeadwindClient(
+            base_url=base_url,
+            login=login,
+            password=password,
+            timeout=timeout,
+            transport=httpx.MockTransport(handler),
+        )
+
+    monkeypatch.setattr(cli, "HeadwindClient", factory)
+
+    result = runner.invoke(cli.app, ["status"])
+
+    assert result.exit_code == 2
+    assert "FHM_HEADWIND_PASSWORD" in result.stderr
+    assert "injoignable" not in result.stderr

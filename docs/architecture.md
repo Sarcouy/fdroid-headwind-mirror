@@ -292,17 +292,35 @@ Trois pièges :
 
 ### Authentification
 
-`POST /rest/public/auth/login` avec `{"login": "...", "password": "..."}` retourne un `UserView` contenant un
-champ `authToken` **persistant** (il n'est régénéré que s'il est vide). L'approche recommandée :
+Le service se connecte par **identifiant et mot de passe** sur `POST /rest/public/jwt/login`, et présente le
+JWT obtenu en `Authorization: Bearer` pour tous les appels suivants.
 
-1. Créer un utilisateur de service dédié dans Headwind, avec les seules permissions du tableau ci-dessus.
-2. Récupérer son `authToken` une fois pour toutes.
-3. Le stocker comme secret et l'utiliser en `Authorization: Bearer`.
+```json
+{"login": "fdroid-mirror", "password": "<MD5 hexadécimal en MAJUSCULES>"}
+```
 
-Cela évite au service de manipuler un mot de passe. Deux points à valider sur l'instance cible avant
-implémentation : le format attendu du champ `password` (le commentaire du code indique que le panneau web
-transmet une empreinte MD5) et l'éventuelle activation de `transmitPassword`, qui impose un chiffrement RSA.
-Le Swagger de l'instance (`/swagger-ui.html`) est la référence à jour.
+Le serveur répond `{"id_token": "..."}`, et répète le jeton dans un en-tête `Authorization` de réponse.
+Le compte n'a pas besoin de s'être connecté au panneau au préalable : si son `authToken` est vide, cette
+première connexion le génère via `UPDATE users SET password = <valeur déjà stockée>, authToken = ...`,
+sans donc toucher au mot de passe.
+
+Trois propriétés de ce point d'entrée conditionnent l'implémentation :
+
+- **Le champ `password` porte une empreinte MD5, pas le mot de passe.** `PasswordUtil.passwordMatch` compare
+  `SHA1(valeur_reçue + sel)` au mot de passe stocké, et `getHashFromRaw` alimente ce calcul avec
+  `MD5(mot_de_passe)`. La casse compte : `CryptoUtil.getHexString` produit des majuscules, donc une empreinte
+  minuscule donne un SHA1 différent et un `401`.
+- **Le jeton vaut 24 h** (`jwt.validity`, valeur par défaut `86400`), là où une exécution dure quelques
+  minutes : une seule authentification par exécution suffit, sans renouvellement.
+- **Un échec de connexion bloque le compte pendant une seconde** (`lastLoginFail`), et chaque échec est déjà
+  ralenti d'un `sleep` d'une seconde côté serveur. Un nouvel essai immédiat après un `401` échouerait donc
+  même avec les bons identifiants : le service ne réessaie pas.
+
+> [!WARNING]
+> L'`authToken` de la table `users` **n'est pas** un identifiant de connexion. `AuthFilter` exige une session
+> HTTP sur `/rest/private/*` et ne le lit que pour invalider les sessions périmées ; le présenter en `Bearer`
+> répond `HTTP 403`. Une conception antérieure reposait sur ce jeton — l'erreur n'est apparue qu'au premier
+> appel contre une instance réelle.
 
 ---
 
@@ -822,10 +840,12 @@ contre la version réellement déployée, via son Swagger (`/swagger-ui.html`) :
    (statut `AMBIGU`, aucune résolution automatique). Reste à voir sa fréquence réelle sur le parc : si elle
    est courante, un critère de désambiguïsation explicite dans `packages.yaml` (par exemple
    `application_id`) deviendra nécessaire.
-1. ~~Format attendu du champ `password` sur `/rest/public/auth/login` et état de l'option
-   `transmitPassword`.~~ **Sans objet** : le service consomme un `authToken` lu en base, et ne se connecte
-   jamais par mot de passe. Une connexion humaine au panneau reste nécessaire une fois, pour que le serveur
-   génère ce jeton.
+1. ~~Format attendu du champ `password` et état de l'option `transmitPassword`.~~ **Tranché** : le service
+   se connecte sur `/rest/public/jwt/login` en transmettant l'empreinte MD5 hexadécimale majuscule du mot de
+   passe, et reçoit un JWT valable 24 h (voir la section 5). Ce point avait été clos à tort comme « sans
+   objet » lorsque la conception reposait sur l'`authToken` ; le premier appel à une instance réelle l'a
+   rouvert avec un `HTTP 403`. L'option `transmitPassword` est sans effet ici : elle n'apparaît que dans
+   `AuthResource` et le contrôleur de connexion du panneau web, jamais dans le module `jwt`.
 2. **Contenu de `data` dans la réponse à `PUT /private/applications/versions`.** Le service suppose qu'elle
    porte la version créée, mais accepte qu'elle soit vide ou d'une autre forme : l'écriture est alors
    enregistrée sans contrôle de cohérence possible. *(Ce point remplace celui sur `FileUploadResult` et

@@ -41,7 +41,8 @@ poetry install
 | Variable | Obligatoire | Défaut | Rôle |
 | --- | --- | --- | --- |
 | `FHM_HEADWIND_URL` | oui | — | URL du panneau Headwind, avec ou sans le suffixe `/rest` |
-| `FHM_HEADWIND_TOKEN` | oui | — | Jeton de l'utilisateur de service (`Authorization: Bearer`) |
+| `FHM_HEADWIND_LOGIN` | oui | — | Identifiant de l'utilisateur de service Headwind |
+| `FHM_HEADWIND_PASSWORD` | oui | — | Mot de passe de ce compte, échangé contre un JWT au démarrage |
 | `FHM_PACKAGES_FILE` | non | `packages.yaml` | Liste déclarative des paquets suivis |
 | `FHM_DATABASE_PATH` | non | `state.db` | Base SQLite d'état local |
 | `FHM_CACHE_DIR` | non | `.cache` | Cache de l'index F-Droid, projeté sur les paquets suivis |
@@ -50,24 +51,21 @@ poetry install
 
 Elles peuvent aussi être placées dans un fichier `.env` à la racine.
 
-### Jeton Headwind
-
-Le service n'implémente pas l'authentification par mot de passe : il consomme un `authToken`, qui n'est
-jamais journalisé.
+### Compte de service Headwind
 
 Créez un utilisateur de service dans le panneau Headwind avec le rôle **User**, et non Admin. Les deux
 portent `edit_application_versions`, mais « User » laisse de côté l'accès aux paramètres système —
 l'interface expose des rôles, pas les permissions nommées dans le tableau de la section 5 de la conception.
 
-**Le jeton n'existe qu'après une première connexion de ce compte.** Le serveur le génère au login lorsqu'il
-est vide, puis le conserve ; le panneau ne l'affiche nulle part. Il se lit donc en base :
+Son nom est libre : le service ne présume d'aucun identifiant et utilise celui que vous déclarez.
 
-```bash
-docker compose exec -T hmdm-db psql -U hmdm -d hmdm -t -A \
-  -c "SELECT authtoken FROM users WHERE login='fdroid-mirror';"
-```
+Son identifiant et son mot de passe suffisent : au premier appel, le service les échange contre un JWT sur
+`POST /rest/public/jwt/login`, puis présente ce jeton en `Authorization: Bearer` pendant toute l'exécution.
+Le mot de passe n'est jamais journalisé et ne quitte le processus que sous forme d'empreinte MD5, seul
+format accepté par ce point d'entrée.
 
-Un résultat vide signifie que le compte ne s'est jamais connecté.
+L'`authToken` visible en base **n'est pas** un identifiant de connexion : les routes `/rest/private/*`
+exigent une session ou un JWT, et le présenter en `Bearer` répond `HTTP 403`.
 
 ### Fichier `packages.yaml`
 
@@ -345,7 +343,8 @@ docker run --rm \
   -v fdroid_mirror_data:/data \
   -v ./packages.yaml:/config/packages.yaml:ro \
   -e FHM_HEADWIND_URL=https://mdm.example.org \
-  -e FHM_HEADWIND_TOKEN=... \
+  -e FHM_HEADWIND_LOGIN=fdroid-mirror \
+  -e FHM_HEADWIND_PASSWORD=... \
   -e FHM_PACKAGES_FILE=/config/packages.yaml \
   fdroid-headwind-mirror sync --apply
 ```
