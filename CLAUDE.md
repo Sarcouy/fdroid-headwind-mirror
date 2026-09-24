@@ -19,6 +19,16 @@ Tout changement suit ce chemin :
 
 Ne jamais fusionner une PR sans y avoir été explicitement invité.
 
+## Git — identité des commits
+
+Les commits de ce dépôt portent l'identité `sarcouy <sarcouy@protonmail.com>`, jamais l'identité globale
+de la machine. Vérifier `git config user.email` avant de committer ; si elle diffère, passer l'identité à
+la commande :
+
+```bash
+git -c user.name=sarcouy -c user.email=sarcouy@protonmail.com commit
+```
+
 ## Pull requests
 
 - Décrire ce que la PR change **et pourquoi** ces choix ont été faits.
