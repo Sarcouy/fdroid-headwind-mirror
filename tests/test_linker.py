@@ -20,15 +20,19 @@ VERSION_ID = 137
 VERSION_CODE = 13070106
 VERSIONS_PATH = re.compile(r"/applications/(\d+)/versions$")
 LINKS_PATH = re.compile(r"/applications/version/(\d+)/configurations$")
+APPLICATION_LINKS_PATH = re.compile(r"/applications/configurations/(\d+)$")
 
 
-def link(configuration_id: int, action: int | None = 1, **extra: Any) -> dict[str, Any]:
+def candidate(configuration_id: int, action: int = 0, **extra: Any) -> dict[str, Any]:
+    # Ligne de GET version/{id}/configurations: sans lien vers la version demandee, id est nul
+    # et action vaut 0, le serveur ne reportant pas l'action d'une autre version.
     return {
-        "id": 900 + configuration_id,
+        "id": None if action == 0 else 900 + configuration_id,
         "configurationId": configuration_id,
         "applicationId": APPLICATION_ID,
         "applicationVersionId": VERSION_ID,
         "action": action,
+        "remove": action == 2,
         "showIcon": True,
         "screenOrder": 3,
         "keyCode": None,
@@ -39,30 +43,52 @@ def link(configuration_id: int, action: int | None = 1, **extra: Any) -> dict[st
     }
 
 
+def installed(configuration_id: int, action: int) -> dict[str, Any]:
+    # Ligne de GET applications/configurations/{id}: un lien de l'application, toutes versions
+    # confondues, ou action 0 pour une configuration qui n'en porte aucun.
+    return {"configurationId": configuration_id, "applicationId": APPLICATION_ID, "action": action}
+
+
 class FakeHeadwind:
-    def __init__(self, links: list[dict[str, Any]] | None = None) -> None:
+    def __init__(
+        self,
+        links: list[dict[str, Any]] | None = None,
+        application_links: list[dict[str, Any]] | None = None,
+    ) -> None:
         self.posts: list[dict[str, Any]] = []
-        self.links = [link(1)] if links is None else links
+        # Par defaut, une version neuve dont la precedente est installee dans deux des trois
+        # configurations.
+        self.links = [candidate(1), candidate(2), candidate(3)] if links is None else links
+        self.application_links = (
+            [installed(1, 1), installed(2, 1), installed(3, 0)]
+            if application_links is None
+            else application_links
+        )
         self.versions = [
             {"id": VERSION_ID, "applicationId": APPLICATION_ID, "versionCode": VERSION_CODE}
         ]
         self.post_fails = False
         self.links_fail = False
+        self.application_links_fail = False
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if request.method == "POST" and path.endswith("/applications/version/configurations"):
             self.posts.append(json.loads(request.content))
-            if self.post_fails:
-                return envelope(None, status="ERROR", message="error.internal.server")
-            return envelope(None)
+            return self._reply(self.post_fails, None)
         if LINKS_PATH.search(path):
-            if self.links_fail:
-                return envelope(None, status="ERROR", message="error.internal.server")
-            return envelope(self.links)
+            return self._reply(self.links_fail, self.links)
+        if APPLICATION_LINKS_PATH.search(path):
+            return self._reply(self.application_links_fail, self.application_links)
         if VERSIONS_PATH.search(path):
             return envelope(self.versions)
         return envelope([])
+
+    @staticmethod
+    def _reply(failing: bool, data: Any) -> httpx.Response:
+        if failing:
+            return envelope(None, status="ERROR", message="error.internal.server")
+        return envelope(data)
 
 
 def plan_of(pkg: str = PKG, application_id: int | None = APPLICATION_ID) -> SyncPlan:
@@ -107,55 +133,91 @@ def run(
         return link_plan(plan or plan_of(), client, repository, run_id=run_id)
 
 
-def test_a_created_version_is_linked_to_its_configurations(
+def sent(server: FakeHeadwind) -> dict[int, dict[str, Any]]:
+    return {item["configurationId"]: item for item in server.posts[0]["configurations"]}
+
+
+def test_a_new_version_is_linked_where_the_application_is_installed(
     repository: StateRepository, make_client: Any
 ) -> None:
     track(repository)
-    server = FakeHeadwind(links=[link(1), link(2)])
+    server = FakeHeadwind()
 
     summary = run(server, repository, make_client)
 
     assert len(server.posts) == 1
     assert server.posts[0]["applicationVersionId"] == VERSION_ID
-    assert [item["configurationId"] for item in server.posts[0]["configurations"]] == [1, 2]
+    assert sorted(sent(server)) == [1, 2]
+    assert [sent(server)[key]["action"] for key in (1, 2)] == [1, 1]
+    assert [sent(server)[key]["notify"] for key in (1, 2)] == [True, True]
     assert summary.linked == 1
     assert summary.configurations == 2
     assert summary.entries[0].notify_requested is True
 
 
-def test_entries_are_sent_back_untouched_apart_from_notify(
+def test_entries_are_sent_back_untouched_apart_from_action_and_notify(
     repository: StateRepository, make_client: Any
 ) -> None:
     track(repository)
-    server = FakeHeadwind(links=[link(1, champInconnuDuService="valeur", screenOrder=9)])
+    server = FakeHeadwind(
+        links=[candidate(1, champInconnuDuService="valeur", screenOrder=9)],
+        application_links=[installed(1, 1)],
+    )
 
     run(server, repository, make_client)
 
-    sent = server.posts[0]["configurations"][0]
-    assert sent["champInconnuDuService"] == "valeur"
-    assert sent["screenOrder"] == 9
-    assert sent["versionText"] == VERSION_ID
-    assert isinstance(sent["versionText"], int)
-    assert sent["notify"] is True
+    item = sent(server)[1]
+    assert item["champInconnuDuService"] == "valeur"
+    assert item["screenOrder"] == 9
+    assert item["versionText"] == VERSION_ID
+    assert isinstance(item["versionText"], int)
+    assert item["id"] is None
+    assert item["action"] == 1
+    assert item["notify"] is True
 
 
-def test_action_is_never_rewritten(repository: StateRepository, make_client: Any) -> None:
+def test_a_version_already_linked_is_sent_back_without_other_configurations(
+    repository: StateRepository, make_client: Any
+) -> None:
     track(repository)
-    server = FakeHeadwind(links=[link(1, action=1), link(2, action=2), link(3, action=0)])
+    server = FakeHeadwind(
+        links=[candidate(1, action=1), candidate(2), candidate(3)],
+        application_links=[installed(1, 1), installed(2, 0), installed(3, 0)],
+    )
 
     summary = run(server, repository, make_client)
 
-    sent = {item["configurationId"]: item for item in server.posts[0]["configurations"]}
-    assert [sent[key]["action"] for key in (1, 2, 3)] == [1, 2, 0]
-    assert [sent[key]["notify"] for key in (1, 2, 3)] == [True, False, False]
+    assert list(sent(server)) == [1]
+    assert sent(server)[1]["id"] == 901
+    assert sent(server)[1]["action"] == 1
+    assert summary.configurations == 1
+
+
+def test_an_uninstall_requested_on_the_version_is_kept(
+    repository: StateRepository, make_client: Any
+) -> None:
+    track(repository)
+    server = FakeHeadwind(
+        links=[candidate(1), candidate(2, action=2), candidate(3)],
+        application_links=[installed(1, 1), installed(2, 1), installed(2, 2), installed(3, 0)],
+    )
+
+    summary = run(server, repository, make_client)
+
+    assert sorted(sent(server)) == [1, 2]
+    assert [sent(server)[key]["action"] for key in (1, 2)] == [1, 2]
+    assert [sent(server)[key]["notify"] for key in (1, 2)] == [True, False]
+    assert sent(server)[2]["remove"] is True
     assert summary.configurations == 1
 
 
 def test_linking_records_the_pushed_version(repository: StateRepository, make_client: Any) -> None:
     track(repository)
+    server = FakeHeadwind()
 
-    run(FakeHeadwind(), repository, make_client)
+    run(server, repository, make_client)
 
+    assert len(server.posts) == 1
     stored = repository.get_tracked_package(PKG)
     assert stored is not None
     assert stored.last_pushed_version_code == VERSION_CODE
@@ -219,7 +281,7 @@ def test_no_configuration_installs_the_application(
     repository: StateRepository, make_client: Any
 ) -> None:
     track(repository)
-    server = FakeHeadwind(links=[])
+    server = FakeHeadwind(application_links=[installed(1, 0), installed(2, 0), installed(3, 0)])
 
     summary = run(server, repository, make_client)
 
@@ -252,6 +314,21 @@ def test_unreadable_links_are_reported(repository: StateRepository, make_client:
     assert not server.posts
     assert summary.entries[0].outcome is LinkingOutcome.FAILED
     assert "illisibles" in summary.entries[0].detail
+
+
+def test_unreadable_application_links_are_reported(
+    repository: StateRepository, make_client: Any
+) -> None:
+    track(repository)
+    server = FakeHeadwind()
+    server.application_links_fail = True
+
+    summary = run(server, repository, make_client)
+
+    assert not server.posts
+    assert summary.entries[0].outcome is LinkingOutcome.FAILED
+    assert "illisibles" in summary.entries[0].detail
+    assert repository.get_tracked_package(PKG).last_pushed_version_code is None
 
 
 def test_an_unresolved_application_is_reported(

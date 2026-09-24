@@ -285,10 +285,12 @@ Trois garanties encadrent l'écriture :
 
 - **Les entrées sont réémises telles quelles.** L'API exige que chaque lien lui revienne intact ; le service
   les lit donc sans les typer, pour ne perdre aucun champ et ne pas convertir `versionText`, entier côté
-  serveur, en chaîne.
-- **`action` n'est jamais réécrit.** Le forcer à « installer » déploierait l'application sur des
-  configurations qui ne la voulaient pas et annulerait une désinstallation demandée. Seul `notify` est posé,
-  et uniquement là où l'application est effectivement installée.
+  serveur, en chaîne. Seuls `action` et `notify` sont posés.
+- **Le lien n'est posé que là où l'application est installée.** Headwind ne reporte pas l'action d'une
+  version à la suivante : une version neuve revient « à ne pas installer » dans toutes les configurations.
+  Le service lit donc les configurations où une version de l'application est installée et n'émet de lien
+  que pour elles ; une désinstallation demandée sur la version est respectée. Comme le panneau, il n'émet
+  jamais de lien « ne pas installer », que le serveur insérerait tel quel.
 - **La notification est demandée, pas constatée.** `notify: true` ne déclenche un push que si le service de
   notification est configuré sur l'instance ; sinon les appareils prennent la mise à jour à leur prochaine
   synchronisation. L'API ne permet pas de distinguer les deux cas.
