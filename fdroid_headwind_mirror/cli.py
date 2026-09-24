@@ -234,6 +234,8 @@ def _log_run(
         updates=plan.updates,
         rejections=plan.rejections,
         versions_created=publication.created if publication else 0,
+        versions_rewritten=publication.rewritten if publication else 0,
+        publications_blocked=publication.blocked if publication else 0,
         versions_linked=linking.linked if linking else 0,
         awaiting_approval=len(linking.awaiting_approval) if linking else 0,
         errors=errors,
@@ -449,8 +451,9 @@ def _render_publication(publication: PublicationSummary) -> None:
         )
     typer.secho(
         f"\n{publication.created} version(s) creee(s),"
+        f" {publication.rewritten} reecrite(s) en place, {publication.blocked} bloquee(s),"
         f" {publication.skipped} ignoree(s), {publication.failed} en echec",
-        fg=typer.colors.RED if publication.failed else typer.colors.GREEN,
+        fg=_publication_summary_colour(publication),
     )
     if publication.created:
         typer.secho(
@@ -504,6 +507,14 @@ def _publication_colour(outcome: PublicationOutcome) -> str:
     return typer.colors.YELLOW
 
 
+def _publication_summary_colour(publication: PublicationSummary) -> str:
+    if publication.failed:
+        return typer.colors.RED
+    if publication.blocked or publication.rewritten:
+        return typer.colors.YELLOW
+    return typer.colors.GREEN
+
+
 def _human_size(size: int) -> str:
     if size < 1024:
         return f"{size} o"
@@ -541,6 +552,11 @@ def _plan_details(entry: PackagePlan) -> list[str]:
         )
     if entry.shape_change:
         lines.append(f"changement de structure: split devient {entry.split}")
+    if entry.status is PlanStatus.UPDATE_AVAILABLE and entry.same_name_version_id is not None:
+        lines.append(
+            f"nom deja porte par la version Headwind #{entry.same_name_version_id}:"
+            " --apply bloquera la publication, Headwind la reecrirait en place"
+        )
     if entry.skipped_prereleases:
         lines.append(f"{entry.skipped_prereleases} preversion(s) ecartee(s)")
     if entry.detail:

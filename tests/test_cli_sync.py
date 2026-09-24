@@ -27,6 +27,9 @@ packages:
   - pkg: com.nextcloud.client
   - pkg: com.pavelsof.wormhole
 """
+AUTO_APPROVED = PACKAGES.replace(
+    "  - pkg: org.videolan.vlc\n", "  - pkg: org.videolan.vlc\n    auto_approve: true\n"
+)
 
 APPLICATIONS = [
     {"id": 7, "name": "VLC", "pkg": "org.videolan.vlc", "version": "3.6.5", "latestVersion": 70},
@@ -59,6 +62,8 @@ VERSIONS: dict[int, list[dict[str, Any]]] = {
     ],
     9: [{"id": 90, "applicationId": 9, "version": "1.0", "versionCode": 1, "split": False}],
 }
+# Version saisie a la main, sans versionCode, qui porte deja le nom du candidat F-Droid.
+HOMONYM = [{"id": 41, "applicationId": 7, "version": "3.7.1", "versionCode": 0, "split": False}]
 
 
 def fdroid_handler(request: httpx.Request) -> httpx.Response:
@@ -318,12 +323,7 @@ def test_cache_holds_only_tracked_packages(workspace: Path) -> None:
 def test_apply_links_the_version_when_auto_approve_is_set(
     workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    (workspace / "packages.yaml").write_text(
-        PACKAGES.replace(
-            "  - pkg: org.videolan.vlc\n", "  - pkg: org.videolan.vlc\n    auto_approve: true\n"
-        ),
-        encoding="utf-8",
-    )
+    (workspace / "packages.yaml").write_text(AUTO_APPROVED, encoding="utf-8")
     monkeypatch.setattr(cli, "_verify_apks", fake_verification)
 
     result = runner.invoke(cli.app, ["sync", "--apply"])
@@ -349,6 +349,40 @@ def test_apply_leaves_the_version_unlinked_without_auto_approve(
 
     assert not [path for method, path in HEADWIND_CALLS if method == "POST"]
     assert "approbation manuelle requise" in result.stdout
+
+
+@pytest.mark.usefixtures("workspace")
+def test_dry_run_flags_a_headwind_version_carrying_the_candidate_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(VERSIONS, 7, HOMONYM)
+
+    plan = by_pkg(report())["org.videolan.vlc"]
+    text = runner.invoke(cli.app, ["sync"]).stdout
+
+    assert plan["status"] == "UPDATE_AVAILABLE"
+    assert plan["same_name_version_id"] == 41
+    assert "version Headwind #41: --apply bloquera la publication" in text
+
+
+@pytest.mark.parametrize("packages", [PACKAGES, AUTO_APPROVED])
+def test_apply_never_rewrites_a_version_carrying_the_same_name(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch, packages: str
+) -> None:
+    (workspace / "packages.yaml").write_text(packages, encoding="utf-8")
+    monkeypatch.setitem(VERSIONS, 7, HOMONYM)
+    monkeypatch.setattr(cli, "_verify_apks", fake_verification)
+
+    result = runner.invoke(cli.app, ["sync", "--apply"])
+
+    assert {method for method, _ in HEADWIND_CALLS} == {"GET"}
+    assert "org.videolan.vlc 3.7.1: blocked" in result.stdout
+    assert "(#41, versionCode 0)" in result.stdout
+    assert "0 version(s) creee(s), 0 reecrite(s) en place, 1 bloquee(s)" in result.stdout
+    lines = [json.loads(line) for line in result.stderr.splitlines() if line.strip()]
+    summary = [line for line in lines if line["event"] == "sync.finished"]
+    assert summary[0]["publications_blocked"] == 1
+    assert summary[0]["versions_created"] == 0
 
 
 @pytest.mark.usefixtures("workspace")

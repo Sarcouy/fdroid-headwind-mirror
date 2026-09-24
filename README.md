@@ -225,7 +225,7 @@ que le parc y a un accès sortant. Headwind n'hébergera jamais les APK.
 ```
   org.videolan.vlc 3.7.1: created - 2 configuration(s) concernee(s), latestVersion bascule
 
-1 version(s) creee(s), 0 ignoree(s), 0 en echec
+1 version(s) creee(s), 0 reecrite(s) en place, 0 bloquee(s), 0 ignoree(s), 0 en echec
 2 configuration(s) referencent ces applications: celles marquees autoUpdate deploient la nouvelle
 version sans autre action.
 ```
@@ -233,13 +233,15 @@ version sans autre action.
 | Résultat | Signification |
 | --- | --- |
 | `created` | La version existe dans Headwind, `last_created_version_code` est enregistré |
+| `blocked` | Une version Headwind porte déjà ce nom : la créer la réécrirait en place, rien n'est écrit |
+| `rewritten` | Headwind a répondu avec une version qui existait déjà : il l'a réécrite en place au lieu d'en créer une |
 | `skipped` | APK non vérifié, version déjà créée, application non résolue, ou ABI sans champ Headwind |
-| `failed` | Configurations illisibles (création annulée) ou création refusée par Headwind |
+| `failed` | Versions ou configurations illisibles (création annulée), ou création refusée par Headwind |
 
 Une réponse acceptée mais inexploitable compte comme `created` : Headwind a écrit, seul l'identifiant
 renvoyé manque. La traiter comme un refus ferait republier la version à chaque exécution.
 
-Quatre garde-fous encadrent l'écriture :
+Cinq garde-fous encadrent l'écriture :
 
 - **La vérification des APK est imposée** : `--apply` active `--verify-apk` d'office, et un artefact non
   vérifié n'est jamais publié. Publier une URL sans avoir constaté l'empreinte des octets servis serait une
@@ -252,6 +254,12 @@ Quatre garde-fous encadrent l'écriture :
   classement de versions est textuel — et le rattachement explicite de l'itération 6 devient nécessaire.
   Les exécutions suivantes continuent de le signaler (`rattachement explicite requis`) au lieu de retomber
   dans un `skipped` muet.
+- **Une version du même nom n'est jamais réécrite.** Headwind ne crée pas une version dont le nom existe
+  déjà : il réécrit l'existante en place, liens aux configurations compris, et ses appareils la réinstallent
+  sans approbation. Le service relit donc les versions juste avant l'écriture et bloque la publication
+  (`blocked`) quel que soit `auto_approve` ; `--dry-run` signale déjà le conflit. Le conflit se lève dans
+  Headwind : modifier soi-même la version existante, ou la renommer ou la supprimer pour que le service
+  crée la nouvelle. Le détail figure dans la [conception](docs/architecture.md#déduplication-par-nom-de-version).
 
 > Cette commande n'a jamais été exécutée contre une instance Headwind réelle. Elle est validée face à un
 > serveur simulé. La valeur de `autoUpdate` sur les configurations du parc reste inconnue : tant qu'elle
@@ -329,7 +337,7 @@ de sortie vaut `1` si la dernière exécution a produit des erreurs.
 Chaque exécution de `sync` émet sur **stderr** une ligne JSON par erreur, puis une ligne de synthèse :
 
 ```json
-{"run_id": 3, "packages": 3, "updates": 1, "rejections": 1, "versions_created": 0, "versions_linked": 0, "awaiting_approval": 0, "errors": 1, "event": "sync.finished", "level": "info", "timestamp": "2026-09-16T14:38:54Z"}
+{"run_id": 3, "packages": 3, "updates": 1, "rejections": 1, "versions_created": 0, "versions_rewritten": 0, "publications_blocked": 0, "versions_linked": 0, "awaiting_approval": 0, "errors": 1, "event": "sync.finished", "level": "info", "timestamp": "2026-09-16T14:38:54Z"}
 ```
 
 Le rapport `--json` sort sur **stdout**, le journal sur **stderr** : sous un timer, `journalctl` collecte le
