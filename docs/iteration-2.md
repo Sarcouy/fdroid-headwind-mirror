@@ -393,30 +393,30 @@ operator, not a default that silently discards packages they declared themselves
 ```
 $ poetry run fhm sync --dry-run
 
-Index F-Droid: 4385 paquets, timestamp 1789478586569 (diff applique, 552 ko)
+F-Droid index: 4385 packages, timestamp 1789478586569 (diff applied, 552 kB)
 
-  org.mozilla.fennec_fdroid   MISE A JOUR
+  org.mozilla.fennec_fdroid   UPDATE AVAILABLE
                               Headwind 128.0.1 (1280001) -> F-Droid 129.0.2 (1290002)
-                              APK universel, 92,4 Mo
-                              signataire conforme
+                              universal APK, 92.4 MB
+                              signer matches
 
-  org.videolan.vlc            MISE A JOUR
+  org.videolan.vlc            UPDATE AVAILABLE
                               Headwind 3.6.5 -> F-Droid 3.7.1
-                              publication par ABI:
+                              per-ABI publication:
                                 arm64-v8a    versionCode 13070106
                                 armeabi-v7a  versionCode 13070105
-                              signataire epingle a cette execution
+                              signer pinned during this run
 
-  com.nextcloud.client        A JOUR
+  com.nextcloud.client        UP TO DATE
                               version 3.29.0 (30290090)
 
-  org.example.rotated         REFUS
-                              signataire divergent
-                              epingle  cd3714b7...7197
-                              candidat 80535be6...22c0
+  org.example.rotated         REJECTED
+                              signer mismatch
+                              pinned    cd3714b7...7197
+                              candidate 80535be6...22c0
 
-3 paquets a jour, 2 mises a jour possibles, 1 refus
-Aucune ecriture effectuee (--dry-run)
+3 up to date, 2 update(s) available, 1 rejected
+No write performed (--dry-run)
 ```
 
 The `--json` option and the exit codes follow the convention set by `status`:

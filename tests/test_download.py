@@ -18,7 +18,7 @@ PAYLOAD = b"contenu d'apk factice" * 100
 DIGEST = hashlib.sha256(PAYLOAD).hexdigest()
 
 
-class Serveur:
+class Server:
     def __init__(self, body: bytes = PAYLOAD, status: int = 200) -> None:
         self.body = body
         self.status = status
@@ -29,8 +29,8 @@ class Serveur:
         return httpx.Response(self.status, content=self.body)
 
 
-def client_for(serveur: Serveur) -> FDroidClient:
-    return FDroidClient(REPO, transport=httpx.MockTransport(serveur.handler))
+def client_for(server: Server) -> FDroidClient:
+    return FDroidClient(REPO, transport=httpx.MockTransport(server.handler))
 
 
 def request(size: int | None = len(PAYLOAD), digest: str = DIGEST) -> ApkRequest:
@@ -45,10 +45,10 @@ def request(size: int | None = len(PAYLOAD), digest: str = DIGEST) -> ApkRequest
 
 
 def test_download_stores_the_apk_and_returns_its_hash(tmp_path: Path) -> None:
-    serveur = Serveur()
+    server = Server()
     store = ApkStore(tmp_path)
 
-    with client_for(serveur) as client:
+    with client_for(server) as client:
         result = fetch_apk(client, store, request())
 
     assert result.reused is False
@@ -59,11 +59,11 @@ def test_download_stores_the_apk_and_returns_its_hash(tmp_path: Path) -> None:
 
 
 def test_hash_mismatch_raises_and_leaves_no_file(tmp_path: Path) -> None:
-    serveur = Serveur(body=b"contenu falsifie")
+    server = Server(body=b"contenu falsifie")
     store = ApkStore(tmp_path)
 
-    with client_for(serveur) as client:
-        with pytest.raises(FDroidIntegrityError, match="sha256 divergente"):
+    with client_for(server) as client:
+        with pytest.raises(FDroidIntegrityError, match="sha256 hash mismatch"):
             fetch_apk(client, store, request(size=None))
 
     assert not (tmp_path / "org.example.app" / "42-arm64-v8a.apk").exists()
@@ -71,10 +71,10 @@ def test_hash_mismatch_raises_and_leaves_no_file(tmp_path: Path) -> None:
 
 def test_size_mismatch_raises_and_leaves_no_file(tmp_path: Path) -> None:
     shorter = PAYLOAD[:-10]
-    serveur = Serveur(body=shorter)
+    server = Server(body=shorter)
     store = ApkStore(tmp_path)
 
-    with client_for(serveur) as client:
+    with client_for(server) as client:
         with pytest.raises(FDroidIntegrityError):
             fetch_apk(
                 client,
@@ -86,21 +86,21 @@ def test_size_mismatch_raises_and_leaves_no_file(tmp_path: Path) -> None:
 
 
 def test_oversized_transfer_is_interrupted(tmp_path: Path) -> None:
-    serveur = Serveur(body=b"x" * 5000)
+    server = Server(body=b"x" * 5000)
     store = ApkStore(tmp_path)
 
-    with client_for(serveur) as client:
-        with pytest.raises(FDroidIntegrityError, match="taille superieure"):
+    with client_for(server) as client:
+        with pytest.raises(FDroidIntegrityError, match="size above"):
             fetch_apk(client, store, request(size=100, digest="peu importe"))
 
     assert not (tmp_path / "org.example.app" / "42-arm64-v8a.apk").exists()
 
 
 def test_http_error_leaves_no_file(tmp_path: Path) -> None:
-    serveur = Serveur(status=404, body=b"")
+    server = Server(status=404, body=b"")
     store = ApkStore(tmp_path)
 
-    with client_for(serveur) as client:
+    with client_for(server) as client:
         with pytest.raises(FDroidTransportError):
             fetch_apk(client, store, request())
 
@@ -108,46 +108,46 @@ def test_http_error_leaves_no_file(tmp_path: Path) -> None:
 
 
 def test_valid_cached_file_is_reused_without_network(tmp_path: Path) -> None:
-    serveur = Serveur()
+    server = Server()
     store = ApkStore(tmp_path)
 
-    with client_for(serveur) as client:
+    with client_for(server) as client:
         fetch_apk(client, store, request())
-        assert serveur.calls == 1
+        assert server.calls == 1
         result = fetch_apk(client, store, request())
 
     assert result.reused is True
-    assert serveur.calls == 1
+    assert server.calls == 1
 
 
 def test_corrupted_cached_file_is_downloaded_again(tmp_path: Path) -> None:
-    serveur = Serveur()
+    server = Server()
     store = ApkStore(tmp_path)
     target = tmp_path / "org.example.app" / "42-arm64-v8a.apk"
     target.parent.mkdir(parents=True)
     target.write_bytes(b"corrompu")
 
-    with client_for(serveur) as client:
+    with client_for(server) as client:
         result = fetch_apk(client, store, request())
 
     assert result.reused is False
-    assert serveur.calls == 1
+    assert server.calls == 1
     assert target.read_bytes() == PAYLOAD
 
 
 def test_failed_download_preserves_an_existing_file(tmp_path: Path) -> None:
-    """L'index peut republier un versionCode avec une empreinte differente (reconstruction).
+    """The index may republish a versionCode with a different hash (a rebuild).
 
-    Le fichier en cache ne correspond alors plus a l'attente, mais il reste valide tant que
-    son remplacant n'est pas verifie: un telechargement en echec ne doit pas le detruire.
+    The cached file then no longer matches the expectation, but it stays valid as long as
+    its replacement is not verified: a failed download must not destroy it.
     """
     store = ApkStore(tmp_path)
     target = tmp_path / "org.example.app" / "42-arm64-v8a.apk"
     target.parent.mkdir(parents=True)
     target.write_bytes(PAYLOAD)
-    serveur = Serveur(body=b"reconstruction incomplete")
+    server = Server(body=b"reconstruction incomplete")
 
-    with client_for(serveur) as client:
+    with client_for(server) as client:
         with pytest.raises(FDroidIntegrityError):
             fetch_apk(client, store, request(digest="empreinte-qui-a-change", size=None))
 
@@ -155,10 +155,10 @@ def test_failed_download_preserves_an_existing_file(tmp_path: Path) -> None:
 
 
 def test_no_partial_file_is_left_behind(tmp_path: Path) -> None:
-    serveur = Serveur(body=b"contenu falsifie")
+    server = Server(body=b"contenu falsifie")
     store = ApkStore(tmp_path)
 
-    with client_for(serveur) as client:
+    with client_for(server) as client:
         with pytest.raises(FDroidIntegrityError):
             fetch_apk(client, store, request(size=None))
 

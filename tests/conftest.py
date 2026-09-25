@@ -19,8 +19,8 @@ JWT = "jeton-de-test"
 
 
 def login_response(request: httpx.Request) -> httpx.Response | None:
-    # Appele en tete des handlers pour que l'authentification reste hors du trafic qu'ils
-    # observent: les assertions sur les methodes emises portent sur les appels metier.
+    # Called at the top of the handlers so that authentication stays out of the traffic they
+    # observe: the assertions on the methods sent are about the business calls.
     if not request.url.path.endswith("/public/jwt/login"):
         return None
     return httpx.Response(200, json={"id_token": JWT})

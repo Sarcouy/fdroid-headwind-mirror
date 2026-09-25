@@ -45,28 +45,28 @@ def test_repo_url_falls_back_to_global_repo(tmp_path: Path) -> None:
 
 
 def test_missing_file_is_rejected(tmp_path: Path) -> None:
-    with pytest.raises(ConfigError, match="illisible"):
+    with pytest.raises(ConfigError, match="unreadable"):
         load_packages_file(tmp_path / "absent.yaml")
 
 
 def test_empty_file_is_rejected(tmp_path: Path) -> None:
-    with pytest.raises(ConfigError, match="vide"):
+    with pytest.raises(ConfigError, match="empty"):
         load_packages_file(write(tmp_path, ""))
 
 
 def test_invalid_yaml_is_rejected(tmp_path: Path) -> None:
-    with pytest.raises(ConfigError, match="YAML invalide"):
+    with pytest.raises(ConfigError, match="invalid YAML"):
         load_packages_file(write(tmp_path, "repo: [unclosed"))
 
 
 def test_missing_repo_is_rejected(tmp_path: Path) -> None:
-    with pytest.raises(ConfigError, match="invalide"):
+    with pytest.raises(ConfigError, match="invalid"):
         load_packages_file(write(tmp_path, "packages:\n  - pkg: org.example.app\n"))
 
 
 def test_unknown_key_is_rejected(tmp_path: Path) -> None:
     content = "repo:\n  url: https://f-droid.org/repo\npackages:\n  - pkg: a\n    approve: true\n"
-    with pytest.raises(ConfigError, match="invalide"):
+    with pytest.raises(ConfigError, match="invalid"):
         load_packages_file(write(tmp_path, content))
 
 
@@ -75,5 +75,5 @@ def test_duplicate_package_is_rejected(tmp_path: Path) -> None:
         "repo:\n  url: https://f-droid.org/repo\n"
         "packages:\n  - pkg: org.example.app\n  - pkg: org.example.app\n"
     )
-    with pytest.raises(ConfigError, match="plusieurs fois"):
+    with pytest.raises(ConfigError, match="more than once"):
         load_packages_file(write(tmp_path, content))

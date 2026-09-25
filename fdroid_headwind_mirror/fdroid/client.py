@@ -93,7 +93,7 @@ class FDroidClient:
         try:
             entry = Entry.model_validate(response.json())
         except (ValueError, ValidationError) as exc:
-            raise FDroidIntegrityError(f"entry.json illisible: {exc}") from exc
+            raise FDroidIntegrityError(f"unreadable entry.json: {exc}") from exc
         return EntryResponse(entry=entry, etag=response.headers.get("ETag"))
 
     def fetch_json(self, entry_file: EntryFile) -> dict[str, Any]:
@@ -105,15 +105,15 @@ class FDroidClient:
         digest = hashlib.sha256(response.content).hexdigest()
         if digest != entry_file.sha256:
             raise FDroidIntegrityError(
-                f"{url}: empreinte sha256 divergente (attendu {entry_file.sha256}, obtenu {digest})"
+                f"{url}: sha256 hash mismatch (expected {entry_file.sha256}, got {digest})"
             )
 
         try:
             payload = json.loads(response.content)
         except ValueError as exc:
-            raise FDroidIntegrityError(f"{url}: JSON illisible") from exc
+            raise FDroidIntegrityError(f"{url}: unreadable JSON") from exc
         if not isinstance(payload, dict):
-            raise FDroidIntegrityError(f"{url}: objet JSON attendu")
+            raise FDroidIntegrityError(f"{url}: JSON object expected")
         return payload
 
     def stream_to_file(self, url: str, destination: Path, max_bytes: int) -> tuple[int, str]:
@@ -129,8 +129,7 @@ class FDroidClient:
                         written += len(chunk)
                         if written > max_bytes:
                             raise FDroidIntegrityError(
-                                f"{url}: taille superieure a {max_bytes} octets,"
-                                " transfert interrompu"
+                                f"{url}: size above {max_bytes} bytes," " transfer interrupted"
                             )
                         digest.update(chunk)
                         handle.write(chunk)

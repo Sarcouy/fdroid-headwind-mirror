@@ -100,12 +100,12 @@ def _publish_one(
         repository.record_event(run_id, "WARNING", "publish.skipped", prepared, pkg=entry.pkg)
         return _entry(entry, PublicationOutcome.SKIPPED, prepared)
 
-    # Relues ici plutot que reprises du plan: la verification des APK s'intercale entre les deux,
-    # et seul l'etat present dit si Headwind creera une version ou en reecrira une en place.
+    # Read here rather than taken from the plan: the APK verification runs in between, and only
+    # the current state tells whether Headwind will create a version or rewrite one in place.
     try:
         versions = client.get_application_versions(prepared.application_id)
     except HeadwindError as exc:
-        detail = f"versions illisibles, publication annulee: {exc}"
+        detail = f"unreadable versions, publication cancelled: {exc}"
         repository.record_event(run_id, "ERROR", "publish.aborted", detail, pkg=entry.pkg)
         return _entry(entry, PublicationOutcome.FAILED, detail)
 
@@ -121,20 +121,20 @@ def _publish_one(
 def _blocked(
     entry: PackagePlan, homonym: ApplicationVersion, repository: StateRepository, run_id: int
 ) -> PublicationEntry:
-    # Bloque quel que soit auto_approve. Headwind ne tient qu'une version par nom: la creer
-    # reecrit la version homonyme en place, liens aux configurations compris, si bien que ses
-    # appareils recoivent le nouveau build sans rattachement et que l'ancien est perdu.
+    # Blocked whatever auto_approve says. Headwind holds a single version per name: creating it
+    # rewrites the same-name version in place, configuration links included, so that its
+    # devices receive the new build without any linking and the old one is lost.
     detail = (
-        f"version {homonym.version} deja presente dans Headwind (#{homonym.id},"
-        f" {_code_label(homonym.version_code)}): Headwind la reecrirait en place avec ses"
-        " rattachements aux configurations, publication bloquee"
+        f"version {homonym.version} already present in Headwind (#{homonym.id},"
+        f" {_code_label(homonym.version_code)}): Headwind would rewrite it in place with its"
+        " configuration links, publication blocked"
     )
     repository.record_event(run_id, "WARNING", "publish.rewrite_blocked", detail, pkg=entry.pkg)
     return _entry(entry, PublicationOutcome.BLOCKED, detail, version_id=homonym.id)
 
 
 def _code_label(version_code: int | None) -> str:
-    return "sans versionCode" if version_code is None else f"versionCode {version_code}"
+    return "no versionCode" if version_code is None else f"versionCode {version_code}"
 
 
 def _create(
@@ -146,12 +146,12 @@ def _create(
     *,
     run_id: int,
 ) -> PublicationEntry:
-    # Les liens sont lus avant la creation: si une configuration porte autoUpdate, Headwind la
-    # bascule sur la nouvelle version des l'insertion, et l'etat d'avant n'est plus observable.
+    # The links are read before the creation: if a configuration carries autoUpdate, Headwind
+    # moves it to the new version on insertion, and the previous state can no longer be seen.
     try:
         links = client.get_application_configurations(prepared.application_id)
     except HeadwindError as exc:
-        detail = f"configurations illisibles, publication annulee: {exc}"
+        detail = f"unreadable configurations, publication cancelled: {exc}"
         repository.record_event(run_id, "ERROR", "publish.aborted", detail, pkg=entry.pkg)
         return _entry(entry, PublicationOutcome.FAILED, detail)
 
@@ -160,12 +160,12 @@ def _create(
     try:
         created = client.create_application_version(prepared)
     except HeadwindError as exc:
-        detail = f"creation refusee par Headwind: {exc}"
+        detail = f"creation refused by Headwind: {exc}"
         repository.record_event(run_id, "ERROR", "publish.failed", detail, pkg=entry.pkg)
         return _entry(entry, PublicationOutcome.FAILED, detail, configurations=configurations)
 
-    # Enregistree aussi pour une reecriture en place: l'ecriture a eu lieu, et l'omettre la
-    # ferait repeter a chaque execution.
+    # Recorded for an in-place rewrite as well: the write happened, and leaving it out would
+    # have it repeated on every run.
     repository.set_version_progress(entry.pkg, last_created_version_code=prepared.version_code)
     if created is not None and created.id in existing_ids:
         return _rewritten(entry, created.id, configurations, repository, run_id)
@@ -180,7 +180,7 @@ def _create(
         run_id,
         "INFO" if switched is True else "WARNING",
         "publish.created",
-        f"Version {prepared.version} creee. {detail}",
+        f"Version {prepared.version} created. {detail}",
         pkg=entry.pkg,
     )
     return _entry(
@@ -201,9 +201,9 @@ def _rewritten(
     run_id: int,
 ) -> PublicationEntry:
     detail = (
-        f"Headwind a reecrit en place la version existante #{version_id} au lieu d'en creer une,"
-        f" {configurations} configuration(s) concernee(s): celles rattachees a cette version"
-        " deploient ce build sans rattachement explicite"
+        f"Headwind rewrote the existing version #{version_id} in place instead of creating one,"
+        f" {configurations} configuration(s) concerned: those linked to this version"
+        " deploy this build without explicit linking"
     )
     repository.record_event(run_id, "WARNING", "publish.rewritten", detail, pkg=entry.pkg)
     return _entry(
@@ -240,35 +240,35 @@ def _prepare(entry: PackagePlan, repository: StateRepository) -> NewApplicationV
 
 
 def _already_created_detail(entry: PackagePlan, created: int) -> str:
-    # Sans cette distinction, un paquet bloque faute de rattachement ressemblerait des le second
-    # run a un paquet sain: le plan le redonne en mise a jour, et le garde-fou d'idempotence
-    # l'ecarte silencieusement.
+    # Without this distinction, a package stuck for want of linking would look like a healthy
+    # one from the second run on: the plan offers the update again, and the idempotence guard
+    # silently discards it.
     if entry.headwind_version_code is not None and entry.headwind_version_code < created:
         return (
-            f"version {created} deja creee mais Headwind pointe toujours"
-            f" {entry.headwind_version_code}: rattachement explicite requis"
+            f"version {created} already created but Headwind still points to"
+            f" {entry.headwind_version_code}: explicit linking required"
         )
-    return f"version {created} deja creee lors d'un run precedent"
+    return f"version {created} already created during a previous run"
 
 
 def _incompleteness(entry: PackagePlan) -> str | None:
     if entry.candidate_version is None or entry.candidate_version_code is None:
-        return "version candidate incomplete"
+        return "incomplete candidate version"
     if entry.application_id is None:
-        return "application Headwind inconnue"
+        return "unknown Headwind application"
     if not entry.artifacts:
-        return "aucun artefact a publier"
+        return "no artefact to publish"
 
     unverified = [item.abi for item in entry.artifacts if item.verified is not True]
     if unverified:
-        return f"APK non verifie ({', '.join(unverified)}), publication refusee"
+        return f"APK not verified ({', '.join(unverified)}), publication refused"
     return None
 
 
 def _urls(entry: PackagePlan) -> dict[str, str] | str:
     if not entry.split:
         if len(entry.artifacts) != 1:
-            return f"version non split avec {len(entry.artifacts)} artefacts"
+            return f"non-split version with {len(entry.artifacts)} artefacts"
         return {"url": entry.artifacts[0].url}
 
     unknown = [
@@ -277,7 +277,7 @@ def _urls(entry: PackagePlan) -> dict[str, str] | str:
         if item.headwind_arch not in _URL_FIELD_BY_ARCH
     ]
     if unknown:
-        return f"architecture sans champ Headwind ({', '.join(unknown)})"
+        return f"architecture without a Headwind field ({', '.join(unknown)})"
     return {_URL_FIELD_BY_ARCH[item.headwind_arch]: item.url for item in entry.artifacts}
 
 
@@ -293,12 +293,12 @@ def _latest_version_switched(
 
 def _creation_detail(configurations: int, switched: bool | None) -> str:
     if switched is None:
-        return f"{configurations} configuration(s) concernee(s), coherence non verifiable"
+        return f"{configurations} configuration(s) concerned, consistency not verifiable"
     if switched:
-        return f"{configurations} configuration(s) concernee(s), latestVersion bascule"
+        return f"{configurations} configuration(s) concerned, latestVersion switched"
     return (
-        f"{configurations} configuration(s) concernee(s), "
-        "latestVersion inchange: le rattachement explicite reste necessaire"
+        f"{configurations} configuration(s) concerned, "
+        "latestVersion unchanged: explicit linking is still needed"
     )
 
 

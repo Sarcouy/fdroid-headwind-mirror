@@ -46,8 +46,8 @@ class FakeHeadwind:
         self.latest_version = latest_version
         self.configurations = configurations
         self.versions = versions if versions is not None else []
-        # Liste servie a la lecture quand elle doit differer de celle que le PUT deduplique: une
-        # version renommee par un operateur entre les deux appels, par exemple.
+        # List served on read when it must differ from the one the PUT deduplicates against: a
+        # version renamed by an operator between the two calls, for example.
         self.listing: list[dict[str, Any]] | None = None
         self.failing: set[Failure] = set()
         self.create_returns_nothing = False
@@ -94,8 +94,8 @@ class FakeHeadwind:
         return envelope(stored)
 
     def _store(self, body: dict[str, Any]) -> dict[str, Any]:
-        # Reproduit la deduplication d'insertApplicationVersion: une version du meme nom est
-        # reecrite en place et garde son identifiant au lieu d'etre inseree.
+        # Reproduces the deduplication of insertApplicationVersion: a version with the same name
+        # is rewritten in place and keeps its id instead of being inserted.
         for index, row in enumerate(self.versions):
             if row["version"] == body["version"]:
                 self.versions[index] = {**body, "id": row["id"]}
@@ -232,7 +232,7 @@ def test_unverified_apk_is_never_published(tracked: StateRepository, make_client
 
     assert not server.puts
     assert summary.entries[0].outcome is PublicationOutcome.SKIPPED
-    assert "non verifie" in summary.entries[0].detail
+    assert "not verified" in summary.entries[0].detail
 
 
 def test_a_version_already_created_is_not_published_again(
@@ -245,7 +245,7 @@ def test_a_version_already_created_is_not_published_again(
 
     assert len(server.puts) == 1
     assert summary.entries[0].outcome is PublicationOutcome.SKIPPED
-    assert "deja creee" in summary.entries[0].detail
+    assert "already created" in summary.entries[0].detail
 
 
 def test_only_updates_are_published(tracked: StateRepository, make_client: Any) -> None:
@@ -322,7 +322,7 @@ def test_a_version_headwind_has_not_adopted_keeps_being_reported(
     summary = publish(plan_of(entry), server, tracked, make_client)
 
     assert len(server.puts) == 1
-    assert "rattachement explicite requis" in summary.entries[0].detail
+    assert "explicit linking required" in summary.entries[0].detail
 
 
 def test_latest_version_not_switching_is_reported(
@@ -334,7 +334,7 @@ def test_latest_version_not_switching_is_reported(
 
     assert summary.created == 1
     assert summary.entries[0].latest_version_switched is False
-    assert "latestVersion inchange" in summary.entries[0].detail
+    assert "latestVersion unchanged" in summary.entries[0].detail
 
 
 def test_an_unreadable_application_does_not_undo_the_creation(
@@ -389,7 +389,7 @@ def test_a_name_carried_by_the_latest_version_blocks_the_creation(
     assert entry.outcome is PublicationOutcome.BLOCKED
     assert entry.version_id == HOMONYM_ID
     assert f"#{HOMONYM_ID}" in entry.detail
-    assert "reecrirait en place" in entry.detail
+    assert "would rewrite it in place" in entry.detail
     assert (summary.blocked, summary.created) == (1, 0)
     assert [(event.level, event.code) for event in events(repository)] == [
         ("WARNING", "publish.rewrite_blocked")
@@ -431,7 +431,7 @@ def test_a_new_name_is_created(
     entry = summary.entries[0]
     assert entry.outcome is PublicationOutcome.CREATED
     assert entry.version_id == CREATED_ID
-    assert "latestVersion bascule" in entry.detail
+    assert "latestVersion switched" in entry.detail
     assert repository.get_tracked_package("org.videolan.vlc").last_created_version_code == 13070106
 
 
@@ -447,8 +447,8 @@ def test_an_identifier_known_before_the_creation_is_reported_as_a_rewrite(
     entry = summary.entries[0]
     assert entry.outcome is PublicationOutcome.REWRITTEN
     assert entry.version_id == HOMONYM_ID
-    assert f"reecrit en place la version existante #{HOMONYM_ID}" in entry.detail
-    assert "bascule" not in entry.detail
+    assert f"rewrote the existing version #{HOMONYM_ID} in place" in entry.detail
+    assert "switched" not in entry.detail
     assert entry.latest_version_switched is None
     assert (summary.rewritten, summary.created) == (1, 0)
     assert ("WARNING", "publish.rewritten") in [
@@ -467,5 +467,5 @@ def test_unreadable_versions_cancel_the_creation(
 
     assert not server.puts
     assert summary.entries[0].outcome is PublicationOutcome.FAILED
-    assert "versions illisibles" in summary.entries[0].detail
+    assert "unreadable versions" in summary.entries[0].detail
     assert tracked.get_tracked_package("org.videolan.vlc").last_created_version_code is None

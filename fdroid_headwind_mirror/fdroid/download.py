@@ -73,12 +73,12 @@ def fetch_apk(
         written, digest = client.stream_to_file(request.url, partial, cap)
         if digest != request.expected_sha256:
             raise FDroidIntegrityError(
-                f"{request.url}: empreinte sha256 divergente"
-                f" (attendu {request.expected_sha256}, obtenu {digest})"
+                f"{request.url}: sha256 hash mismatch"
+                f" (expected {request.expected_sha256}, got {digest})"
             )
         if expected_size is not None and written != expected_size:
             raise FDroidIntegrityError(
-                f"{request.url}: taille inattendue (attendu {expected_size}, obtenu {written})"
+                f"{request.url}: unexpected size (expected {expected_size}, got {written})"
             )
         partial.replace(destination)
     except BaseException:

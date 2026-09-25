@@ -48,43 +48,39 @@ from fdroid_headwind_mirror.headwind.errors import (
 from fdroid_headwind_mirror.reporting.report import RunReport, build_report
 from fdroid_headwind_mirror.state.repository import StateRepository, SyncRun
 
-app = typer.Typer(
-    help="Synchronise les mises a jour F-Droid vers Headwind MDM.", no_args_is_help=True
-)
+app = typer.Typer(help="Synchronise F-Droid updates to Headwind MDM.", no_args_is_help=True)
 
 _STATUS_LABEL: dict[PackageStatus, str] = {
     PackageStatus.RESOLVED: "OK",
-    PackageStatus.PAUSED: "EN PAUSE",
-    PackageStatus.NOT_IN_HEADWIND: "ABSENT DE HEADWIND",
-    PackageStatus.AMBIGUOUS: "AMBIGU",
+    PackageStatus.PAUSED: "PAUSED",
+    PackageStatus.NOT_IN_HEADWIND: "NOT IN HEADWIND",
+    PackageStatus.AMBIGUOUS: "AMBIGUOUS",
 }
 
 _PLAN_LABEL: dict[PlanStatus, str] = {
-    PlanStatus.UPDATE_AVAILABLE: "MISE A JOUR",
-    PlanStatus.UP_TO_DATE: "A JOUR",
-    PlanStatus.REJECTED: "REFUS",
-    PlanStatus.NOT_IN_FDROID: "ABSENT DE F-DROID",
-    PlanStatus.SKIPPED: "IGNORE",
+    PlanStatus.UPDATE_AVAILABLE: "UPDATE AVAILABLE",
+    PlanStatus.UP_TO_DATE: "UP TO DATE",
+    PlanStatus.REJECTED: "REJECTED",
+    PlanStatus.NOT_IN_FDROID: "NOT IN F-DROID",
+    PlanStatus.SKIPPED: "SKIPPED",
 }
 
-_PERMISSION_MESSAGE = (
-    "Acces refuse par Headwind: l'utilisateur de service doit avoir le role Utilisateur."
-)
+_PERMISSION_MESSAGE = "Access denied by Headwind: the service user must have the User role."
 
 _CREDENTIALS_MESSAGE = (
-    "Authentification refusee par Headwind: verifier FHM_HEADWIND_LOGIN et FHM_HEADWIND_PASSWORD."
+    "Authentication refused by Headwind: check FHM_HEADWIND_LOGIN and FHM_HEADWIND_PASSWORD."
 )
 
 
 @app.callback()
 def main() -> None:
-    """Point d'entree du service."""
+    """Service entry point."""
     _configure_logging()
 
 
 def _configure_logging() -> None:
-    # Le journal part sur stderr: --json ecrit son rapport sur stdout, et les deux flux doivent
-    # rester analysables separement quand le service tourne sous timer.
+    # The log goes to stderr: --json writes its report to stdout, and both streams must remain
+    # parseable separately when the service runs under a timer.
     structlog.configure(
         processors=[
             structlog.processors.add_log_level,
@@ -98,12 +94,15 @@ def _configure_logging() -> None:
 
 @app.command()
 def status(
-    as_json: Annotated[bool, typer.Option("--json", help="Sortie JSON.")] = False,
+    as_json: Annotated[bool, typer.Option("--json", help="JSON output.")] = False,
     show_untracked: Annotated[
-        bool, typer.Option("--show-untracked", help="Lister les applications Headwind non suivies.")
+        bool,
+        typer.Option(
+            "--show-untracked", help="List the Headwind applications that are not tracked."
+        ),
     ] = False,
 ) -> None:
-    """Confronte packages.yaml aux applications declarees dans Headwind."""
+    """Match packages.yaml against the applications declared in Headwind."""
     settings = _load_settings()
     packages = _load_packages(settings)
 
@@ -117,7 +116,7 @@ def status(
         except HeadwindPermissionError as exc:
             _fail(repository, run_id, "headwind.permission_denied", exc, _PERMISSION_MESSAGE)
         except HeadwindError as exc:
-            _fail(repository, run_id, "headwind.unreachable", exc, f"Headwind injoignable: {exc}")
+            _fail(repository, run_id, "headwind.unreachable", exc, f"Headwind unreachable: {exc}")
 
         report = reconcile(packages.resolved(), applications, repository, run_id)
         repository.finish_run(
@@ -138,19 +137,19 @@ def status(
 @app.command()
 def sync(
     dry_run: Annotated[
-        bool, typer.Option("--dry-run/--apply", help="N'ecrit rien dans Headwind.")
+        bool, typer.Option("--dry-run/--apply", help="Write nothing to Headwind.")
     ] = True,
-    as_json: Annotated[bool, typer.Option("--json", help="Sortie JSON.")] = False,
+    as_json: Annotated[bool, typer.Option("--json", help="JSON output.")] = False,
     verify_apk: Annotated[
         bool,
         typer.Option(
             "--verify-apk",
-            help="Telecharge les APK a publier et verifie leur empreinte sha256"
-            " (implicite avec --apply).",
+            help="Download the APKs to publish and verify their sha256 hash"
+            " (implied by --apply).",
         ),
     ] = False,
 ) -> None:
-    """Confronte les versions F-Droid aux versions publiees dans Headwind."""
+    """Compare the F-Droid versions with the versions published in Headwind."""
     settings = _load_settings()
     packages = _load_packages(settings)
     declared = packages.resolved()
@@ -159,8 +158,8 @@ def sync(
         run_id = repository.start_run()
         try:
             plan = _build_sync_plan(settings, packages, declared, repository, run_id)
-            # Publier une URL sans avoir verifie les octets qu'elle sert reviendrait a faire
-            # confiance au depot sur parole: --apply impose donc la verification.
+            # Publishing a URL without having verified the bytes it serves would mean taking the
+            # repository at its word: --apply therefore enforces the verification.
             verification = (
                 _verify_apks(settings, packages, plan, repository, run_id)
                 if verify_apk or not dry_run
@@ -174,9 +173,9 @@ def sync(
         except HeadwindPermissionError as exc:
             _fail(repository, run_id, "headwind.permission_denied", exc, _PERMISSION_MESSAGE)
         except HeadwindError as exc:
-            _fail(repository, run_id, "headwind.unreachable", exc, f"Headwind injoignable: {exc}")
+            _fail(repository, run_id, "headwind.unreachable", exc, f"Headwind unreachable: {exc}")
         except FDroidError as exc:
-            _fail(repository, run_id, "fdroid.unavailable", exc, f"Depot F-Droid: {exc}")
+            _fail(repository, run_id, "fdroid.unavailable", exc, f"F-Droid repository: {exc}")
 
         errors = (
             plan.rejections
@@ -244,10 +243,10 @@ def _log_run(
 
 @app.command("report")
 def report_command(
-    runs: Annotated[int, typer.Option("--runs", min=1, help="Executions a afficher.")] = 5,
-    as_json: Annotated[bool, typer.Option("--json", help="Sortie JSON.")] = False,
+    runs: Annotated[int, typer.Option("--runs", min=1, help="Runs to display.")] = 5,
+    as_json: Annotated[bool, typer.Option("--json", help="JSON output.")] = False,
 ) -> None:
-    """Restitue l'historique des executions et les points d'attention."""
+    """Show the run history and the points needing attention."""
     settings = _load_settings()
     with StateRepository(settings.database_path) as repository:
         run_report = build_report(repository, runs=runs)
@@ -262,70 +261,63 @@ def report_command(
 
 @app.command()
 def prune(
-    days: Annotated[int, typer.Option("--days", min=1, help="Anciennete a conserver.")] = 90,
-    assume_yes: Annotated[
-        bool, typer.Option("--yes", help="Ne pas demander confirmation.")
-    ] = False,
+    days: Annotated[int, typer.Option("--days", min=1, help="Days of history to keep.")] = 90,
+    assume_yes: Annotated[bool, typer.Option("--yes", help="Do not ask for confirmation.")] = False,
 ) -> None:
-    """Supprime l'historique d'executions anterieur au delai indique."""
+    """Delete the run history older than the given number of days."""
     settings = _load_settings()
     before = (datetime.now(UTC) - timedelta(days=days)).isoformat(timespec="seconds")
     with StateRepository(settings.database_path) as repository:
         if not assume_yes:
-            typer.confirm(
-                f"Supprimer definitivement les executions anterieures a {before} ?", abort=True
-            )
+            typer.confirm(f"Permanently delete the runs older than {before}?", abort=True)
         removed_runs, removed_events = repository.prune_runs(before)
 
-    typer.echo(f"{removed_runs} execution(s) et {removed_events} evenement(s) supprime(s)")
+    typer.echo(f"{removed_runs} run(s) and {removed_events} event(s) deleted")
 
 
 def _render_report(run_report: RunReport) -> None:
     if run_report.last_run is None:
-        typer.secho("Aucune execution enregistree.", fg=typer.colors.YELLOW)
+        typer.secho("No run recorded.", fg=typer.colors.YELLOW)
         return
 
     last = run_report.last_run
     typer.secho(
-        f"Derniere execution #{last.id}: {last.status}"
-        + (" (inachevee)" if run_report.unfinished else ""),
+        f"Last run #{last.id}: {last.status}" + (" (unfinished)" if run_report.unfinished else ""),
         fg=typer.colors.GREEN if run_report.healthy else typer.colors.RED,
     )
     typer.echo(
-        f"  debutee {last.started_at}, {last.packages_checked} paquet(s) verifie(s),"
-        f" {last.versions_created} version(s) creee(s), {last.errors} erreur(s)"
+        f"  started {last.started_at}, {last.packages_checked} package(s) checked,"
+        f" {last.versions_created} version(s) created, {last.errors} error(s)"
     )
 
     if run_report.errors:
-        typer.secho(
-            f"\nErreurs de la derniere execution ({len(run_report.errors)}):", fg=typer.colors.RED
-        )
+        typer.secho(f"\nErrors of the last run ({len(run_report.errors)}):", fg=typer.colors.RED)
         for event in run_report.errors:
             label = f"{event.pkg} " if event.pkg else ""
             typer.echo(f"  {label}{event.code}: {event.message}")
 
     if run_report.pending_approvals:
         typer.secho(
-            f"\nEn attente de rattachement ({len(run_report.pending_approvals)}):",
+            f"\nAwaiting linking ({len(run_report.pending_approvals)}):",
             fg=typer.colors.YELLOW,
         )
         for pending in run_report.pending_approvals:
             typer.echo(
-                f"  {pending.pkg}: version {pending.created_version_code} creee,"
-                f" rattachee {pending.pushed_version_code or 'aucune'}"
+                f"  {pending.pkg}: version {pending.created_version_code} created,"
+                f" linked {pending.pushed_version_code or 'none'}"
             )
 
-    typer.echo(f"\nHistorique ({len(run_report.history)} derniere(s) execution(s)):")
+    typer.echo(f"\nHistory ({len(run_report.history)} last run(s)):")
     for entry in run_report.history:
         typer.echo(f"  #{entry.id}  {entry.started_at}  {_run_label(entry)}")
 
-    typer.echo(f"\n{run_report.tracked_packages} paquet(s) suivi(s)")
+    typer.echo(f"\n{run_report.tracked_packages} tracked package(s)")
 
 
 def _run_label(run: SyncRun) -> str:
     return (
-        f"{run.status.ljust(8)} {run.packages_checked} verifie(s),"
-        f" {run.versions_created} creee(s), {run.errors} erreur(s)"
+        f"{run.status.ljust(8)} {run.packages_checked} checked,"
+        f" {run.versions_created} created, {run.errors} error(s)"
     )
 
 
@@ -386,7 +378,7 @@ def _refresh_index(
         "INFO",
         "fdroid.index",
         f"Index {refresh.source.value}, timestamp {refresh.timestamp},"
-        f" {refresh.package_count} paquet(s) en cache",
+        f" {refresh.package_count} package(s) in cache",
     )
     return refresh
 
@@ -407,11 +399,11 @@ def _render_plan(
     linking: LinkingSummary | None = None,
 ) -> None:
     typer.echo(
-        f"Index F-Droid: {plan.index_package_count} paquet(s) suivi(s),"
+        f"F-Droid index: {plan.index_package_count} tracked package(s),"
         f" timestamp {plan.index_timestamp} (source {plan.index_source})\n"
     )
     if not plan.packages:
-        typer.secho("Aucun paquet declare dans packages.yaml.", fg=typer.colors.YELLOW)
+        typer.secho("No package declared in packages.yaml.", fg=typer.colors.YELLOW)
         return
 
     width = max(len(entry.pkg) for entry in plan.packages)
@@ -424,17 +416,17 @@ def _render_plan(
             typer.echo(f"  {' ' * width}  {line}")
 
     typer.echo(
-        f"\n{plan.up_to_date} a jour, {plan.updates} mise(s) a jour possible(s),"
-        f" {plan.rejections} refus"
+        f"\n{plan.up_to_date} up to date, {plan.updates} update(s) available,"
+        f" {plan.rejections} rejected"
     )
     if verification is not None:
         typer.echo(
-            f"APK verifies: {verification.verified}, en echec: {verification.failed},"
-            f" telecharges: {_human_size(verification.downloaded_bytes)},"
-            f" reutilises: {_human_size(verification.reused_bytes)}"
+            f"APKs verified: {verification.verified}, failed: {verification.failed},"
+            f" downloaded: {_human_size(verification.downloaded_bytes)},"
+            f" reused: {_human_size(verification.reused_bytes)}"
         )
     if publication is None:
-        typer.secho("Aucune ecriture effectuee (--dry-run)", fg=typer.colors.BLUE)
+        typer.secho("No write performed (--dry-run)", fg=typer.colors.BLUE)
         return
     _render_publication(publication)
     if linking is not None:
@@ -450,15 +442,15 @@ def _render_publication(publication: PublicationSummary) -> None:
             fg=_publication_colour(entry.outcome),
         )
     typer.secho(
-        f"\n{publication.created} version(s) creee(s),"
-        f" {publication.rewritten} reecrite(s) en place, {publication.blocked} bloquee(s),"
-        f" {publication.skipped} ignoree(s), {publication.failed} en echec",
+        f"\n{publication.created} version(s) created,"
+        f" {publication.rewritten} rewritten in place, {publication.blocked} blocked,"
+        f" {publication.skipped} skipped, {publication.failed} failed",
         fg=_publication_summary_colour(publication),
     )
     if publication.created:
         typer.secho(
-            f"{publication.configurations} configuration(s) referencent ces applications:"
-            " celles marquees autoUpdate deploient la nouvelle version sans autre action.",
+            f"{publication.configurations} configuration(s) reference these applications:"
+            " those marked autoUpdate deploy the new version without further action.",
             fg=typer.colors.YELLOW,
         )
 
@@ -473,20 +465,20 @@ def _render_linking(linking: LinkingSummary) -> None:
             fg=_linking_colour(entry.outcome),
         )
     typer.secho(
-        f"\n{linking.linked} version(s) rattachee(s) a {linking.configurations}"
-        f" configuration(s), {linking.skipped} ignoree(s), {linking.failed} en echec",
+        f"\n{linking.linked} version(s) linked to {linking.configurations}"
+        f" configuration(s), {linking.skipped} skipped, {linking.failed} failed",
         fg=typer.colors.RED if linking.failed else typer.colors.GREEN,
     )
     if linking.linked:
         typer.secho(
-            "Notification demandee: les appareils ne la recevront que si le service push est"
-            " configure, sinon a leur prochaine synchronisation.",
+            "Notification requested: the devices only receive it if the push service is"
+            " configured, otherwise at their next sync.",
             fg=typer.colors.YELLOW,
         )
     awaiting = linking.awaiting_approval
     if awaiting:
         typer.secho(
-            f"En attente d'approbation manuelle (auto_approve: false): {', '.join(awaiting)}",
+            f"Awaiting manual approval (auto_approve: false): {', '.join(awaiting)}",
             fg=typer.colors.YELLOW,
         )
 
@@ -517,23 +509,23 @@ def _publication_summary_colour(publication: PublicationSummary) -> str:
 
 def _human_size(size: int) -> str:
     if size < 1024:
-        return f"{size} o"
+        return f"{size} B"
     value = size / 1024
-    for unit in ("ko", "Mo"):
+    for unit in ("kB", "MB"):
         if value < 1024:
             return f"{value:.1f} {unit}"
         value /= 1024
-    return f"{value:.1f} Go"
+    return f"{value:.1f} GB"
 
 
 def _plan_details(entry: PackagePlan) -> list[str]:
     if entry.status in (PlanStatus.SKIPPED, PlanStatus.NOT_IN_FDROID):
         return [entry.detail] if entry.detail else []
     if entry.status is PlanStatus.REJECTED:
-        lines = [entry.detail or "version non resolue"]
+        lines = [entry.detail or "version not resolved"]
         if entry.signer_state is SignerState.MISMATCH:
-            lines.append(f"epingle  {entry.expected_signer}")
-            lines.append(f"candidat {entry.candidate_signer}")
+            lines.append(f"pinned    {entry.expected_signer}")
+            lines.append(f"candidate {entry.candidate_signer}")
         return lines
 
     lines: list[str] = []
@@ -545,20 +537,20 @@ def _plan_details(entry: PackagePlan) -> list[str]:
         lines.append(f"version {proposed}")
 
     if entry.split:
-        lines.append("publication par ABI:")
+        lines.append("per-ABI publication:")
         lines.extend(
             f"  {artifact.abi.ljust(12)} versionCode {artifact.version_code}"
             for artifact in entry.artifacts
         )
     if entry.shape_change:
-        lines.append(f"changement de structure: split devient {entry.split}")
+        lines.append(f"shape change: split becomes {entry.split}")
     if entry.status is PlanStatus.UPDATE_AVAILABLE and entry.same_name_version_id is not None:
         lines.append(
-            f"nom deja porte par la version Headwind #{entry.same_name_version_id}:"
-            " --apply bloquera la publication, Headwind la reecrirait en place"
+            f"name already taken by Headwind version #{entry.same_name_version_id}:"
+            " --apply will block the publication, Headwind would rewrite it in place"
         )
     if entry.skipped_prereleases:
-        lines.append(f"{entry.skipped_prereleases} preversion(s) ecartee(s)")
+        lines.append(f"{entry.skipped_prereleases} pre-release(s) discarded")
     if entry.detail:
         lines.append(entry.detail)
     return lines
@@ -569,7 +561,7 @@ def _version_label(name: str | None, code: int | None) -> str:
         return f"{name} ({code})"
     if name:
         return name
-    return str(code) if code is not None else "inconnue"
+    return str(code) if code is not None else "unknown"
 
 
 def _plan_colour(plan_status: PlanStatus) -> str:
@@ -584,11 +576,9 @@ def _plan_colour(plan_status: PlanStatus) -> str:
 
 def _load_settings() -> Settings:
     try:
-        return Settings()  # type: ignore[call-arg]  # champs fournis par l'environnement FHM_*
+        return Settings()  # type: ignore[call-arg]  # fields provided by the FHM_* environment
     except ValidationError as exc:
-        typer.secho(
-            f"Configuration d'environnement incomplete:\n{exc}", fg=typer.colors.RED, err=True
-        )
+        typer.secho(f"Incomplete environment configuration:\n{exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from exc
 
 
@@ -610,11 +600,11 @@ def _load_packages(settings: Settings) -> PackagesFile:
 
 
 def _render(report: ReconciliationReport, application_count: int, show_untracked: bool) -> None:
-    typer.echo(f"Applications Headwind: {application_count}")
-    typer.echo(f"Paquets suivis: {len(report.packages)}\n")
+    typer.echo(f"Headwind applications: {application_count}")
+    typer.echo(f"Tracked packages: {len(report.packages)}\n")
 
     if not report.packages:
-        typer.secho("Aucun paquet declare dans packages.yaml.", fg=typer.colors.YELLOW)
+        typer.secho("No package declared in packages.yaml.", fg=typer.colors.YELLOW)
         return
 
     width = max(len(entry.pkg) for entry in report.packages)
@@ -627,16 +617,16 @@ def _render(report: ReconciliationReport, application_count: int, show_untracked
             typer.echo(f"  {' ' * width}  {line}")
 
     if report.dropped:
-        typer.echo(f"\nRetires du suivi: {', '.join(report.dropped)}")
+        typer.echo(f"\nNo longer tracked: {', '.join(report.dropped)}")
 
     if show_untracked and report.untracked_applications:
-        typer.echo(f"\nApplications Headwind non suivies ({len(report.untracked_applications)}):")
+        typer.echo(f"\nUntracked Headwind applications ({len(report.untracked_applications)}):")
         for ref in report.untracked_applications:
             typer.echo(f"  #{ref.id} {ref.name}")
 
     if report.blocking_count:
         typer.secho(
-            f"\n{report.blocking_count} paquet(s) requiert une action avant synchronisation.",
+            f"\n{report.blocking_count} package(s) need an action before synchronisation.",
             fg=typer.colors.YELLOW,
         )
 
@@ -644,29 +634,29 @@ def _render(report: ReconciliationReport, application_count: int, show_untracked
 def _details(entry: PackageReport) -> list[str]:
     if entry.status is PackageStatus.PAUSED and entry.application_id is None:
         unresolved = (
-            f"{len(entry.candidates)} applications portent ce package"
+            f"{len(entry.candidates)} applications carry this package"
             if entry.candidates
-            else "absent de Headwind"
+            else "absent from Headwind"
         )
-        return [f"suivi suspendu, non resolu ({unresolved})"]
+        return [f"tracking paused, not resolved ({unresolved})"]
     if entry.status is PackageStatus.AMBIGUOUS:
         return [
-            f"candidat #{ref.id} {ref.name}"
-            + (" (application commune)" if ref.common else "")
+            f"candidate #{ref.id} {ref.name}"
+            + (" (common application)" if ref.common else "")
             + (f" v{ref.version}" if ref.version else "")
             for ref in entry.candidates
         ]
     if entry.status is PackageStatus.NOT_IN_HEADWIND:
-        return ["ajouter l'application dans Headwind avant de la suivre"]
+        return ["add the application in Headwind before tracking it"]
 
     details = [
         f"application #{entry.application_id}"
         + (f", version {entry.headwind_version}" if entry.headwind_version else "")
     ]
     if entry.expected_signer is None:
-        details.append("signataire non epingle")
+        details.append("signer not pinned")
     if entry.awaiting_approval:
-        details.append("version en attente d'approbation")
+        details.append("version awaiting approval")
     return details
 
 

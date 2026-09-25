@@ -109,28 +109,28 @@ poetry run fhm status
 The command matches `packages.yaml` against the applications declared in Headwind:
 
 ```
-Applications Headwind: 4
-Paquets suivis: 4
+Headwind applications: 4
+Tracked packages: 4
 
   org.mozilla.fennec_fdroid  OK
                              application #7, version 128.0.1
-                             signataire non epingle
-  com.nextcloud.client       AMBIGU
-                             candidat #8 Nextcloud v3.29.0
-                             candidat #9 Nextcloud (commun) (application commune) v3.28.0
-  org.videolan.vlc           ABSENT DE HEADWIND
-                             ajouter l'application dans Headwind avant de la suivre
+                             signer not pinned
+  com.nextcloud.client       AMBIGUOUS
+                             candidate #8 Nextcloud v3.29.0
+                             candidate #9 Nextcloud (shared) (common application) v3.28.0
+  org.videolan.vlc           NOT IN HEADWIND
+                             add the application in Headwind before tracking it
 ```
 
 | Status | Meaning | Expected action |
 | --- | --- | --- |
 | `OK` | A single Headwind application carries this package | none |
-| `EN PAUSE` | Tracking suspended by `paused: true` | none |
-| `ABSENT DE HEADWIND` | No application carries this package | add the application in Headwind |
-| `AMBIGU` | Several applications carry this package | remove the duplicate, or do not track this package |
+| `PAUSED` | Tracking suspended by `paused: true` | none |
+| `NOT IN HEADWIND` | No application carries this package | add the application in Headwind |
+| `AMBIGUOUS` | Several applications carry this package | remove the duplicate, or do not track this package |
 
-An `AMBIGU` package is never resolved automatically: associating the wrong application would publish a version
-on the wrong record.
+An `AMBIGUOUS` package is never resolved automatically: associating the wrong application would publish a
+version on the wrong record.
 
 `paused: true` silences every alert for this package: it is never counted as blocking, even if it is absent
 from Headwind or ambiguous. The details displayed then state that it is not resolved. Pausing a package is
@@ -148,7 +148,7 @@ therefore a complete mute, not a mere postponement.
 | Code | Meaning |
 | --- | --- |
 | `0` | All the tracked packages are resolved |
-| `1` | At least one package is `ABSENT DE HEADWIND` or `AMBIGU` |
+| `1` | At least one package is `NOT IN HEADWIND` or `AMBIGUOUS` |
 | `2` | Configuration error, access denied, or Headwind unreachable |
 
 ### Update plan
@@ -161,29 +161,29 @@ The command fetches the F-Droid index, resolves the candidate version of each tr
 with the one published in Headwind. **`--dry-run` writes nothing to Headwind** — it is the default mode.
 
 ```
-Index F-Droid: 3 paquet(s) suivi(s), timestamp 1789478586569 (source CACHE)
+F-Droid index: 3 tracked package(s), timestamp 1789478586569 (source CACHE)
 
-  org.videolan.vlc           MISE A JOUR
+  org.videolan.vlc           UPDATE AVAILABLE
                              Headwind 3.6.5 (13060506) -> F-Droid 3.7.1 (13070106)
-                             publication par ABI:
+                             per-ABI publication:
                                arm64-v8a    versionCode 13070106
-  com.nextcloud.client       A JOUR
+  com.nextcloud.client       UP TO DATE
                              version 34.1.1 (340010190)
-                             2 preversion(s) ecartee(s)
-  com.pavelsof.wormhole      REFUS
-                             aucune version pour arm64-v8a (disponibles: armeabi-v7a)
+                             2 pre-release(s) discarded
+  com.pavelsof.wormhole      REJECTED
+                             no version for arm64-v8a (available: armeabi-v7a)
 ```
 
 | Status | Meaning |
 | --- | --- |
-| `MISE A JOUR` | A newer version is available on F-Droid |
-| `A JOUR` | Headwind already carries the candidate version |
-| `REFUS` | Signer mismatch, unavailable ABI, or blocked anti-feature |
-| `ABSENT DE F-DROID` | The package does not exist in the repository |
-| `IGNORE` | Package paused, or not resolved in Headwind (see `status`) |
+| `UPDATE AVAILABLE` | A newer version is available on F-Droid |
+| `UP TO DATE` | Headwind already carries the candidate version |
+| `REJECTED` | Signer mismatch, unavailable ABI, or blocked anti-feature |
+| `NOT IN F-DROID` | The package does not exist in the repository |
+| `SKIPPED` | Package paused, or not resolved in Headwind (see `status`) |
 
 The only write is local: the signer is pinned on the first successful resolution, and can no longer be
-overwritten afterwards. A later mismatch produces a `REFUS`, since Android rejects any update signed with
+overwritten afterwards. A later mismatch produces a `REJECTED`, since Android rejects any update signed with
 another key.
 
 The first call downloads the full index (19 MB gzipped); the following ones start from the projected cache,
@@ -199,11 +199,11 @@ Without this option, no APK is downloaded: `sync --dry-run` only reads metadata.
 packages to update are streamed and their sha256 hash compared with the one in the index.
 
 ```
-  org.vi_server.red_screen  MISE A JOUR
+  org.vi_server.red_screen  UPDATE AVAILABLE
                             Headwind 0.1 (0) -> F-Droid 1.2 (3)
 
-0 a jour, 1 mise(s) a jour possible(s), 0 refus
-APK verifies: 1, en echec: 0, telecharges: 17.2 ko, reutilises: 0 o
+0 up to date, 1 update(s) available, 0 rejected
+APKs verified: 1, failed: 0, downloaded: 17.2 kB, reused: 0 B
 ```
 
 The APKs are kept under `FHM_CACHE_DIR/apk/<package>/<versionCode>-<abi>.apk` and reused as long as their
@@ -222,11 +222,11 @@ download the APK from `f-droid.org` themselves**: this is the chosen distributio
 has outgoing access to it. Headwind will never host the APKs.
 
 ```
-  org.videolan.vlc 3.7.1: created - 2 configuration(s) concernee(s), latestVersion bascule
+  org.videolan.vlc 3.7.1: created - 2 configuration(s) concerned, latestVersion switched
 
-1 version(s) creee(s), 0 reecrite(s) en place, 0 bloquee(s), 0 ignoree(s), 0 en echec
-2 configuration(s) referencent ces applications: celles marquees autoUpdate deploient la nouvelle
-version sans autre action.
+1 version(s) created, 0 rewritten in place, 0 blocked, 0 skipped, 0 failed
+2 configuration(s) reference these applications: those marked autoUpdate deploy the new version
+without further action.
 ```
 
 | Outcome | Meaning |
@@ -251,7 +251,7 @@ Five safeguards frame the write:
   being published again, since Headwind does not refuse it on its own.
 - **`latestVersion` is read again after the creation.** If it has not switched, Headwind propagated nothing —
   its version ranking is textual — and the explicit linking of iteration 6 becomes necessary. The following
-  runs keep flagging it (`rattachement explicite requis`) instead of falling back to a silent `skipped`.
+  runs keep flagging it (`explicit linking required`) instead of falling back to a silent `skipped`.
 - **A version with the same name is never rewritten.** Headwind does not create a version whose name already
   exists: it rewrites the existing one in place, configuration links included, and its devices reinstall it
   without approval. The service therefore reads the versions again right before the write and blocks the
@@ -270,11 +270,11 @@ Once the version is created, `--apply` links it to the configurations that alrea
 provided the package carries `auto_approve: true`.
 
 ```
-  org.videolan.vlc: linked - 2 configuration(s) rattachee(s), notification demandee
+  org.videolan.vlc: linked - 2 configuration(s) linked, notification requested
 
-1 version(s) rattachee(s) a 2 configuration(s), 0 ignoree(s), 0 en echec
-Notification demandee: les appareils ne la recevront que si le service push est configure, sinon a
-leur prochaine synchronisation.
+1 version(s) linked to 2 configuration(s), 0 skipped, 0 failed
+Notification requested: the devices only receive it if the push service is configured, otherwise at
+their next sync.
 ```
 
 Linking does not depend on the outcome of the plan but on a single state criterion: a version created and not
@@ -314,17 +314,17 @@ Shows the run history and the points needing attention, without any network call
 local state database.
 
 ```
-Derniere execution #2: OK
-  debutee 2026-09-16T14:38:54+00:00, 3 paquet(s) verifie(s), 0 version(s) creee(s), 0 erreur(s)
+Last run #2: OK
+  started 2026-09-16T14:38:54+00:00, 3 package(s) checked, 0 version(s) created, 0 error(s)
 
-En attente de rattachement (1):
-  org.videolan.vlc: version 13070106 creee, rattachee aucune
+Awaiting linking (1):
+  org.videolan.vlc: version 13070106 created, linked none
 
-Historique (2 derniere(s) execution(s)):
-  #2  2026-09-16T14:38:54+00:00  OK       3 verifie(s), 0 creee(s), 0 erreur(s)
-  #1  2026-09-16T14:38:54+00:00  WARNING  3 verifie(s), 1 creee(s), 1 erreur(s)
+History (2 last run(s)):
+  #2  2026-09-16T14:38:54+00:00  OK       3 checked, 0 created, 0 error(s)
+  #1  2026-09-16T14:38:54+00:00  WARNING  3 checked, 1 created, 1 error(s)
 
-1 paquet(s) suivi(s)
+1 tracked package(s)
 ```
 
 A package awaiting linking remains displayed even when the last run went well: it is a durable state, which

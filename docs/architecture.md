@@ -909,8 +909,8 @@ extension.
 
 The notification is **requested**, never observed: `notify: true` only triggers `notifyDevicesOnUpdate` if the
 push service is configured on the instance (§7.5, and §13 item 4, still open). The report therefore says
-"notification requested" (`notification demandee`) and never "devices notified" — the API does not make it
-possible to observe the difference.
+"notification requested" and never "devices notified" — the API does not make it possible to observe the
+difference.
 
 ### 12.3 What iteration 7 does exactly
 
@@ -949,7 +949,7 @@ The following items were established by reading the source code of `hmdm-server`
 the version actually deployed, through its Swagger (`/swagger-ui.html`):
 
 0. **Uniqueness of `pkg`** — iteration 1 handles the case of several applications carrying the same package
-   (`AMBIGU` status, no automatic resolution). Its actual frequency on the fleet remains to be seen: if it is
+   (`AMBIGUOUS` status, no automatic resolution). Its actual frequency on the fleet remains to be seen: if it is
    common, an explicit disambiguation criterion in `packages.yaml` (for example `application_id`) will become
    necessary.
 1. ~~Expected format of the `password` field and state of the `transmitPassword` option.~~ **Settled**: the

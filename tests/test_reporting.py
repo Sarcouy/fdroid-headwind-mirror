@@ -34,8 +34,8 @@ def seed(path: Path) -> None:
         track_package(repository)
         repository.set_version_progress("org.videolan.vlc", last_created_version_code=13070106)
         run_id = repository.start_run()
-        repository.record_event(run_id, "ERROR", "publish.failed", "creation refusee", pkg="a.b")
-        repository.record_event(run_id, "INFO", "fdroid.index", "index a jour")
+        repository.record_event(run_id, "ERROR", "publish.failed", "creation refused", pkg="a.b")
+        repository.record_event(run_id, "INFO", "fdroid.index", "index up to date")
         repository.finish_run(run_id, "WARNING", packages_checked=3, versions_created=1, errors=1)
 
 
@@ -44,7 +44,7 @@ def test_an_empty_database_reports_nothing_without_failing() -> None:
     result = runner.invoke(cli.app, ["report"])
 
     assert result.exit_code == 0
-    assert "Aucune execution" in result.stdout
+    assert "No run" in result.stdout
 
 
 def test_the_report_shows_the_last_run_and_its_errors(workspace: Path) -> None:
@@ -54,7 +54,7 @@ def test_the_report_shows_the_last_run_and_its_errors(workspace: Path) -> None:
 
     assert result.exit_code == 1
     assert "WARNING" in result.stdout
-    assert "creation refusee" in result.stdout
+    assert "creation refused" in result.stdout
     assert "org.videolan.vlc" in result.stdout
 
 
@@ -114,8 +114,8 @@ def test_pruning_removes_old_runs_and_their_events(workspace: Path) -> None:
     with StateRepository(workspace / "state.db") as repository:
         old_run = repository.start_run()
         repository.record_event(old_run, "INFO", "a.b", "ancien")
-        # pylint: disable=protected-access  # start_run horodate a maintenant: dater un run
-        # dans le passe demande d'ecrire directement en base, ce que l'API n'expose pas.
+        # pylint: disable=protected-access  # start_run timestamps with now: dating a run in
+        # the past requires writing to the database directly, which the API does not expose.
         repository._connection.execute(
             "UPDATE sync_run SET started_at = ? WHERE id = ?",
             ((datetime.now(UTC) - timedelta(days=200)).isoformat(timespec="seconds"), old_run),
@@ -127,7 +127,7 @@ def test_pruning_removes_old_runs_and_their_events(workspace: Path) -> None:
     result = runner.invoke(cli.app, ["prune", "--days", "90", "--yes"])
 
     assert result.exit_code == 0
-    assert "1 execution(s) et 1 evenement(s)" in result.stdout
+    assert "1 run(s) and 1 event(s)" in result.stdout
     with StateRepository(workspace / "state.db") as repository:
         assert [run.id for run in repository.list_runs(10)] == [recent_run]
         assert repository.count_events(old_run) == 0

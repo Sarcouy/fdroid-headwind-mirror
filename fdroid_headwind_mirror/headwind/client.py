@@ -37,9 +37,9 @@ def normalise_base_url(base_url: str) -> str:
 
 
 def password_digest(password: str) -> str:
-    # Headwind compare SHA1(MD5(motdepasse) + sel) au mot de passe stocke: le MD5 est impose par
-    # le protocole, pas choisi pour proteger le secret. La casse compte, CryptoUtil.getHexString
-    # produit des majuscules et un digest minuscule donnerait un SHA1 different, donc un 401.
+    # Headwind compares SHA1(MD5(password) + salt) with the stored password: MD5 is imposed by
+    # the protocol, not chosen to protect the secret. Case matters: CryptoUtil.getHexString
+    # produces uppercase, and a lowercase digest would give a different SHA1, hence a 401.
     return hashlib.md5(password.encode("utf-8"), usedforsecurity=False).hexdigest().upper()
 
 
@@ -55,8 +55,8 @@ class HeadwindClient:
     ) -> None:
         self._base_url = normalise_base_url(base_url)
         self._login = login
-        # Seule l'empreinte est conservee: le mot de passe en clair ne survit pas au constructeur
-        # et ne peut donc pas fuir dans une trace ou un repr d'instance.
+        # Only the digest is kept: the plain password does not outlive the constructor, and
+        # therefore cannot leak into a traceback or an instance repr.
         self._digest = password_digest(password)
         self._authenticated = False
         self._client = httpx.Client(
@@ -101,9 +101,9 @@ class HeadwindClient:
     def create_application_version(
         self, version: NewApplicationVersion
     ) -> ApplicationVersion | None:
-        # None distingue "creee mais reponse inexploitable" de "refusee": _put leve deja pour une
-        # enveloppe en erreur, donc arriver ici signifie que Headwind a accepte l'ecriture. Le
-        # rendre indistinct d'un refus ferait republier la version au run suivant.
+        # None tells "created but unusable response" apart from "refused": _put already raises
+        # for an error envelope, so getting here means that Headwind accepted the write. Making
+        # it indistinguishable from a refusal would republish the version on the next run.
         path = "/private/applications/versions"
         payload = self._put(path, version.payload())
         try:
@@ -112,14 +112,14 @@ class HeadwindClient:
             return None
 
     def get_version_configurations(self, version_id: int) -> list[dict[str, Any]]:
-        # Seule lecture rendue brute plutot que typee: l'API exige que ces entrees lui soient
-        # reemises telles quelles. Les passer par les modeles supprimerait les champs qu'ils ne
-        # declarent pas (extra="ignore") et convertirait versionText, entier cote serveur, en
-        # chaine, ce que sa deserialisation refuse.
+        # The only read returned raw rather than typed: the API requires these entries to be
+        # sent back as they are. Passing them through the models would drop the fields they do
+        # not declare (extra="ignore") and would convert versionText, an integer server-side,
+        # into a string, which its deserialization rejects.
         path = f"/private/applications/version/{version_id}/configurations"
         payload = self._get(path)
         if not isinstance(payload, list) or any(not isinstance(item, dict) for item in payload):
-            raise HeadwindApiError(ResponseStatus.OK, "liste de configurations attendue", path)
+            raise HeadwindApiError(ResponseStatus.OK, "list of configurations expected", path)
         return payload
 
     def link_version_configurations(
@@ -138,8 +138,8 @@ class HeadwindClient:
         return self._send(path, lambda: self._client.post(path, json=body))
 
     def _authenticate(self) -> None:
-        # Le jeton vaut 24 h par defaut (jwt.validity) la ou un run dure quelques minutes: une
-        # seule authentification par client suffit, sans renouvellement en cours de route.
+        # The token lasts 24 h by default (jwt.validity) whereas a run lasts a few minutes: a
+        # single authentication per client is enough, with no renewal along the way.
         if self._authenticated:
             return
 
@@ -158,11 +158,11 @@ class HeadwindClient:
         try:
             payload = response.json()
         except ValueError as exc:
-            raise HeadwindTransportError(f"{_LOGIN_PATH}: reponse non JSON") from exc
+            raise HeadwindTransportError(f"{_LOGIN_PATH}: non-JSON response") from exc
 
         token = payload.get("id_token") if isinstance(payload, dict) else None
         if not isinstance(token, str) or not token:
-            raise HeadwindTransportError(f"{_LOGIN_PATH}: jeton absent de la reponse")
+            raise HeadwindTransportError(f"{_LOGIN_PATH}: token missing from the response")
 
         self._client.headers["Authorization"] = f"Bearer {token}"
         self._authenticated = True
@@ -181,14 +181,14 @@ class HeadwindClient:
         try:
             envelope = response.json()
         except ValueError as exc:
-            raise HeadwindTransportError(f"{path}: reponse non JSON") from exc
+            raise HeadwindTransportError(f"{path}: non-JSON response") from exc
 
         return self._unwrap(envelope, path)
 
     @staticmethod
     def _unwrap(envelope: Any, path: str) -> Any:
         if not isinstance(envelope, dict):
-            raise HeadwindTransportError(f"{path}: enveloppe inattendue")
+            raise HeadwindTransportError(f"{path}: unexpected envelope")
 
         raw_status = envelope.get("status")
         message = envelope.get("message")
@@ -204,8 +204,8 @@ class HeadwindClient:
     @staticmethod
     def _parse(model: type[T] | Any, payload: Any, path: str) -> T:
         if payload is None:
-            raise HeadwindApiError(ResponseStatus.OK, "data absent", path)
+            raise HeadwindApiError(ResponseStatus.OK, "data missing", path)
         try:
             return TypeAdapter(model).validate_python(payload)
         except ValidationError as exc:
-            raise HeadwindApiError(ResponseStatus.OK, f"reponse illisible: {exc}", path) from exc
+            raise HeadwindApiError(ResponseStatus.OK, f"unreadable response: {exc}", path) from exc

@@ -106,7 +106,7 @@ def refresh_index(client: FDroidClient, cache: IndexCache, tracked: list[str]) -
     entry = response.entry
     if entry is None:
         if cached is None:
-            raise RuntimeError("entry.json inchange sans cache disponible")
+            raise RuntimeError("entry.json unchanged with no cache available")
         return _refresh(cached.payload, IndexSource.CACHE, cached.timestamp)
 
     if cached is not None and cached.timestamp == entry.timestamp and not widened:
