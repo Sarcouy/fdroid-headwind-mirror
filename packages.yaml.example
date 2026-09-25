@@ -1,7 +1,7 @@
 repo:
   url: https://f-droid.org/repo
-  # Declare mais pas encore verifie: le service telecharge entry.json, qui n'est pas signe.
-  # La protection repose aujourd'hui sur HTTPS et sur la chaine d'empreintes sha256.
+  # Declared but not verified yet: the service downloads entry.json, which is not signed.
+  # Protection currently relies on HTTPS and on the chain of sha256 hashes.
   fingerprint: 43238d512c1e5eb2d6569f4a3afbf5523418b82e0a3ed1552770abb9a9c9ccab
 
 defaults:
