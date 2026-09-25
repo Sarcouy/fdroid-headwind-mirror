@@ -1,44 +1,45 @@
 # CLAUDE.md
 
-Instructions propres à ce dépôt. Elles complètent la configuration globale et, sur les points ci-dessous,
-la remplacent.
+Instructions specific to this repository. They complement the global configuration and, on the points below,
+override it.
 
-## Git — jamais de push direct sur `main`
+## Git — never push directly to `main`
 
-**Ne jamais pousser sur `origin/main`.** Aucune exception, y compris pour un correctif d'une ligne, une
-mise à jour de documentation ou un pipeline rouge.
+**Never push to `origin/main`.** No exception, not even for a one-line fix, a documentation update or a red
+pipeline.
 
-Tout changement suit ce chemin :
+Every change follows this path:
 
-1. créer une branche depuis `main` à jour — `git switch -c <type>/<sujet>` (`feat/`, `fix/`, `docs/`,
-   `chore/`) ;
-2. committer sur cette branche ;
-3. pousser la branche — `git push -u origin <branche>` ;
-4. ouvrir une pull request — `gh pr create` ;
-5. attendre que la CI soit verte, puis laisser la fusion à l'auteur du dépôt.
+1. create a branch from an up-to-date `main` — `git switch -c <type>/<topic>` (`feat/`, `fix/`, `docs/`,
+   `chore/`);
+2. commit on that branch;
+3. push the branch — `git push -u origin <branch>`;
+4. open a pull request — `gh pr create`;
+5. wait for the CI to be green, then leave the merge to the repository author.
 
-Ne jamais fusionner une PR sans y avoir été explicitement invité.
+Never merge a PR without having been explicitly asked to.
 
 ## Pull requests
 
-- Décrire ce que la PR change **et pourquoi** ces choix ont été faits.
-- Commencer par une section TL;DR, la plus courte possible.
-- Ouvrir la PR en brouillon (`--draft`).
-- S'assigner l'auteur du dépôt comme assignee et reviewer.
-- Terminer la description par l'emoji `:factory:`.
+- Describe what the PR changes **and why** these choices were made.
+- Start with a TL;DR section, as short as possible.
+- Open the PR as a draft (`--draft`).
+- Assign the repository author as assignee and reviewer.
+- End the description with the `:factory:` emoji.
+- Write the title and the description in English.
 
-Pas de `/spend` : c'est une quick action GitLab, sans effet sur GitHub. Le serveur MCP à utiliser ici est
-**github**, et non gitlab, malgré la règle globale visant `~/workspace/**`.
+No `/spend`: it is a GitLab quick action, with no effect on GitHub. The MCP server to use here is **github**,
+not gitlab, despite the global rule targeting `~/workspace/**`.
 
-## Dépôt public
+## Public repository
 
-Ce dépôt est public. Avant tout commit : aucun secret, aucun jeton, aucun nom de domaine interne, aucune
-donnée du parc. `.gitignore` exclut `.env`, `state.db`, `packages.yaml`, `.cache/` et `.venv/` — vérifier
-que rien de sensible n'a été ajouté au diff.
+This repository is public. Before any commit: no secret, no token, no internal domain name, no fleet data.
+`.gitignore` excludes `.env`, `state.db`, `packages.yaml`, `.cache/` and `.venv/` — check that nothing
+sensitive has been added to the diff.
 
-## Vérifications avant de committer
+## Checks before committing
 
-Les trois contrôles de la CI, dans l'environnement Poetry :
+The three CI checks, in the Poetry environment:
 
 ```bash
 poetry run pytest -q
@@ -46,17 +47,17 @@ poetry run black --check .
 poetry run pylint fdroid_headwind_mirror tests tools
 ```
 
-**Lire les codes de sortie, jamais la sortie seule.** Pylint affiche « 10.00/10 » tout en sortant avec un
-code non nul quand il a émis un message : la note est arrondie et ne reflète pas la présence d'un
-avertissement. Un `| tail` rapporte le statut de `tail`, pas celui du linter — ne pas enchaîner de pipe
-sur ces commandes. Cette erreur a déjà fait passer un pipeline rouge pour vert.
+**Read the exit codes, never the output alone.** Pylint displays "10.00/10" while exiting with a non-zero code
+when it has emitted a message: the score is rounded and does not reflect the presence of a warning. A `| tail`
+reports the status of `tail`, not that of the linter — do not pipe these commands. This mistake has already
+passed a red pipeline off as green.
 
-Les paquets sont ciblés explicitement dans l'appel à pylint : sans cela, il parcourt `.venv` en CI.
+The packages are targeted explicitly in the pylint call: without that, it walks `.venv` in CI.
 
-## Conventions du projet
+## Project conventions
 
-- Code, identifiants et messages de commit en anglais ; documentation en français.
-- Commentaires réservés aux décisions non déductibles du code, et alors auto-suffisants.
-- Annotations de type strictes.
-- Tests entièrement hors ligne : `httpx.MockTransport` pour Headwind comme pour F-Droid.
-- Toute écriture vers Headwind reste derrière `sync --apply`, jamais active en `--dry-run`.
+- Code, identifiers, commit messages and documentation in English — the repository is public.
+- Comments are reserved for decisions that cannot be deduced from the code, and must then be self-sufficient.
+- Strict type annotations.
+- Fully offline tests: `httpx.MockTransport` for Headwind as well as for F-Droid.
+- Every write to Headwind stays behind `sync --apply`, never active in `--dry-run`.
