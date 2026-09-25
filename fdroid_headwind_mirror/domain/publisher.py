@@ -100,8 +100,8 @@ def _publish_one(
         repository.record_event(run_id, "WARNING", "publish.skipped", prepared, pkg=entry.pkg)
         return _entry(entry, PublicationOutcome.SKIPPED, prepared)
 
-    # Relues ici plutot que reprises du plan: la verification des APK s'intercale entre les deux,
-    # et seul l'etat present dit si Headwind creera une version ou en reecrira une en place.
+    # Read here rather than taken from the plan: the APK verification runs in between, and only
+    # the current state tells whether Headwind will create a version or rewrite one in place.
     try:
         versions = client.get_application_versions(prepared.application_id)
     except HeadwindError as exc:
@@ -121,9 +121,9 @@ def _publish_one(
 def _blocked(
     entry: PackagePlan, homonym: ApplicationVersion, repository: StateRepository, run_id: int
 ) -> PublicationEntry:
-    # Bloque quel que soit auto_approve. Headwind ne tient qu'une version par nom: la creer
-    # reecrit la version homonyme en place, liens aux configurations compris, si bien que ses
-    # appareils recoivent le nouveau build sans rattachement et que l'ancien est perdu.
+    # Blocked whatever auto_approve says. Headwind holds a single version per name: creating it
+    # rewrites the same-name version in place, configuration links included, so that its
+    # devices receive the new build without any linking and the old one is lost.
     detail = (
         f"version {homonym.version} deja presente dans Headwind (#{homonym.id},"
         f" {_code_label(homonym.version_code)}): Headwind la reecrirait en place avec ses"
@@ -146,8 +146,8 @@ def _create(
     *,
     run_id: int,
 ) -> PublicationEntry:
-    # Les liens sont lus avant la creation: si une configuration porte autoUpdate, Headwind la
-    # bascule sur la nouvelle version des l'insertion, et l'etat d'avant n'est plus observable.
+    # The links are read before the creation: if a configuration carries autoUpdate, Headwind
+    # moves it to the new version on insertion, and the previous state can no longer be seen.
     try:
         links = client.get_application_configurations(prepared.application_id)
     except HeadwindError as exc:
@@ -164,8 +164,8 @@ def _create(
         repository.record_event(run_id, "ERROR", "publish.failed", detail, pkg=entry.pkg)
         return _entry(entry, PublicationOutcome.FAILED, detail, configurations=configurations)
 
-    # Enregistree aussi pour une reecriture en place: l'ecriture a eu lieu, et l'omettre la
-    # ferait repeter a chaque execution.
+    # Recorded for an in-place rewrite as well: the write happened, and leaving it out would
+    # have it repeated on every run.
     repository.set_version_progress(entry.pkg, last_created_version_code=prepared.version_code)
     if created is not None and created.id in existing_ids:
         return _rewritten(entry, created.id, configurations, repository, run_id)
@@ -240,9 +240,9 @@ def _prepare(entry: PackagePlan, repository: StateRepository) -> NewApplicationV
 
 
 def _already_created_detail(entry: PackagePlan, created: int) -> str:
-    # Sans cette distinction, un paquet bloque faute de rattachement ressemblerait des le second
-    # run a un paquet sain: le plan le redonne en mise a jour, et le garde-fou d'idempotence
-    # l'ecarte silencieusement.
+    # Without this distinction, a package stuck for want of linking would look like a healthy
+    # one from the second run on: the plan offers the update again, and the idempotence guard
+    # silently discards it.
     if entry.headwind_version_code is not None and entry.headwind_version_code < created:
         return (
             f"version {created} deja creee mais Headwind pointe toujours"

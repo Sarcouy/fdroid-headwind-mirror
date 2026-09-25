@@ -88,8 +88,8 @@ class SyncPlan(BaseModel):
 
 
 def same_name_version(versions: list[ApplicationVersion], name: str) -> ApplicationVersion | None:
-    # Egalite stricte, comme la requete de deduplication de Headwind (version = #{versionNumber}):
-    # une comparaison normalisee ferait diverger ce garde-fou de ce que le serveur fusionne.
+    # Strict equality, like Headwind's deduplication query (version = #{versionNumber}): a
+    # normalised comparison would make this guard diverge from what the server merges.
     return next((version for version in versions if version.version == name), None)
 
 
@@ -190,9 +190,9 @@ def _plan_one(
         )
 
     status = _status(candidate, headwind.version_code, signer_state)
-    # Repere informatif: la derniere version observee sur F-Droid, meme refusee, pour que le
-    # rapport reste lisible sans relire l'index. Ne sert jamais a decider d'une publication,
-    # ce role revenant a last_created_version_code et last_pushed_version_code.
+    # Informative marker: the last version seen on F-Droid, even a rejected one, so that the
+    # report stays readable without reading the index again. Never used to decide on a
+    # publication: that role belongs to last_created_version_code and last_pushed_version_code.
     repository.set_version_progress(entry.pkg, last_seen_version_code=candidate.version_code)
 
     return PackagePlan(

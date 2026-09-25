@@ -83,8 +83,8 @@ def main() -> None:
 
 
 def _configure_logging() -> None:
-    # Le journal part sur stderr: --json ecrit son rapport sur stdout, et les deux flux doivent
-    # rester analysables separement quand le service tourne sous timer.
+    # The log goes to stderr: --json writes its report to stdout, and both streams must remain
+    # parseable separately when the service runs under a timer.
     structlog.configure(
         processors=[
             structlog.processors.add_log_level,
@@ -159,8 +159,8 @@ def sync(
         run_id = repository.start_run()
         try:
             plan = _build_sync_plan(settings, packages, declared, repository, run_id)
-            # Publier une URL sans avoir verifie les octets qu'elle sert reviendrait a faire
-            # confiance au depot sur parole: --apply impose donc la verification.
+            # Publishing a URL without having verified the bytes it serves would mean taking the
+            # repository at its word: --apply therefore enforces the verification.
             verification = (
                 _verify_apks(settings, packages, plan, repository, run_id)
                 if verify_apk or not dry_run
@@ -584,7 +584,7 @@ def _plan_colour(plan_status: PlanStatus) -> str:
 
 def _load_settings() -> Settings:
     try:
-        return Settings()  # type: ignore[call-arg]  # champs fournis par l'environnement FHM_*
+        return Settings()  # type: ignore[call-arg]  # fields provided by the FHM_* environment
     except ValidationError as exc:
         typer.secho(
             f"Configuration d'environnement incomplete:\n{exc}", fg=typer.colors.RED, err=True

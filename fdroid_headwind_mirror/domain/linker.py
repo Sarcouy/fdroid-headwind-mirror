@@ -75,8 +75,8 @@ def link_plan(
     entries: list[LinkingEntry] = []
     for entry in plan.packages:
         tracked = repository.get_tracked_package(entry.pkg)
-        # Une version creee ce run porte deja last_created > last_pushed: la meme condition couvre
-        # donc ce qui vient d'etre publie et ce qu'un run precedent a laisse sans rattachement.
+        # A version created by this run already has last_created > last_pushed: the same condition
+        # covers both what was just published and what a previous run left unlinked.
         if tracked is None or not tracked.awaiting_approval:
             continue
         entries.append(_link_one(entry, tracked, client, repository, run_id=run_id))
@@ -152,11 +152,11 @@ def _resolve_target(
 
 
 def _links_to_send(candidates: list[dict[str, Any]], installing: set[int]) -> list[dict[str, Any]]:
-    # Headwind ne reporte pas l'action d'une version a l'autre: une version neuve revient a 0,
-    # "ne pas installer", dans toutes les configurations. L'action 1 est donc posee la ou une
-    # version de l'application est installee, sauf desinstallation demandee sur celle-ci. Comme
-    # le panneau, aucune ligne a 0 n'est emise: le serveur l'insererait telle quelle, creant un
-    # lien dans une configuration qui n'installait pas l'application.
+    # Headwind does not carry the action over from one version to the next: a new version comes
+    # back with 0, "do not install", in every configuration. Action 1 is therefore set where a
+    # version of the application is installed, unless an uninstall was requested on this one. As
+    # in the panel, no row with 0 is sent: the server would insert it as is, creating a link in
+    # a configuration that did not install the application.
     links: list[dict[str, Any]] = []
     for item in candidates:
         if item.get("action") == _UNINSTALL_ACTION:
@@ -169,9 +169,8 @@ def _links_to_send(candidates: list[dict[str, Any]], installing: set[int]) -> li
 def _resolve_version_id(
     application_id: int, version_code: int, client: HeadwindClient
 ) -> int | None:
-    # L'identifiant n'est pas repris de la publication: il peut manquer (reponse de creation
-    # inexploitable) et il n'existe pas du tout quand le rattachement reprend le travail laisse
-    # par un run precedent.
+    # The id is not taken from the publication: it may be missing (unusable creation response),
+    # and it does not exist at all when linking resumes the work left by a previous run.
     for version in client.get_application_versions(application_id):
         if version.version_code == version_code:
             return version.id
@@ -185,8 +184,8 @@ def _nothing_to_link(
     repository: StateRepository,
     run_id: int,
 ) -> LinkingEntry:
-    # La progression est enregistree malgre l'absence d'action: sans cela le paquet resterait
-    # signale en attente a chaque execution, pour un etat pourtant deja atteint.
+    # The progress is recorded even though nothing was done: otherwise the package would stay
+    # reported as pending on every run, for a state already reached.
     repository.set_version_progress(entry.pkg, last_pushed_version_code=version_code)
     detail = "aucune configuration n'installe cette application"
     repository.record_event(run_id, "INFO", "link.nothing", detail, pkg=entry.pkg)
