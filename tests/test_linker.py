@@ -273,7 +273,7 @@ def test_a_version_absent_from_headwind_is_reported(
 
     assert not server.posts
     assert summary.entries[0].outcome is LinkingOutcome.FAILED
-    assert "introuvable" in summary.entries[0].detail
+    assert "not found" in summary.entries[0].detail
     assert repository.get_tracked_package(PKG).last_pushed_version_code is None
 
 
@@ -287,7 +287,7 @@ def test_no_configuration_installs_the_application(
 
     assert not server.posts
     assert summary.entries[0].outcome is LinkingOutcome.SKIPPED
-    assert "aucune configuration" in summary.entries[0].detail
+    assert "no configuration" in summary.entries[0].detail
     assert repository.get_tracked_package(PKG).last_pushed_version_code == VERSION_CODE
 
 
@@ -313,7 +313,7 @@ def test_unreadable_links_are_reported(repository: StateRepository, make_client:
 
     assert not server.posts
     assert summary.entries[0].outcome is LinkingOutcome.FAILED
-    assert "illisibles" in summary.entries[0].detail
+    assert "unreadable" in summary.entries[0].detail
 
 
 def test_unreadable_application_links_are_reported(
@@ -327,7 +327,7 @@ def test_unreadable_application_links_are_reported(
 
     assert not server.posts
     assert summary.entries[0].outcome is LinkingOutcome.FAILED
-    assert "illisibles" in summary.entries[0].detail
+    assert "unreadable" in summary.entries[0].detail
     assert repository.get_tracked_package(PKG).last_pushed_version_code is None
 
 

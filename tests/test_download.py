@@ -63,7 +63,7 @@ def test_hash_mismatch_raises_and_leaves_no_file(tmp_path: Path) -> None:
     store = ApkStore(tmp_path)
 
     with client_for(serveur) as client:
-        with pytest.raises(FDroidIntegrityError, match="sha256 divergente"):
+        with pytest.raises(FDroidIntegrityError, match="sha256 hash mismatch"):
             fetch_apk(client, store, request(size=None))
 
     assert not (tmp_path / "org.example.app" / "42-arm64-v8a.apk").exists()
@@ -90,7 +90,7 @@ def test_oversized_transfer_is_interrupted(tmp_path: Path) -> None:
     store = ApkStore(tmp_path)
 
     with client_for(serveur) as client:
-        with pytest.raises(FDroidIntegrityError, match="taille superieure"):
+        with pytest.raises(FDroidIntegrityError, match="size above"):
             fetch_apk(client, store, request(size=100, digest="peu importe"))
 
     assert not (tmp_path / "org.example.app" / "42-arm64-v8a.apk").exists()
@@ -136,10 +136,10 @@ def test_corrupted_cached_file_is_downloaded_again(tmp_path: Path) -> None:
 
 
 def test_failed_download_preserves_an_existing_file(tmp_path: Path) -> None:
-    """L'index peut republier un versionCode avec une empreinte differente (reconstruction).
+    """The index may republish a versionCode with a different hash (a rebuild).
 
-    Le fichier en cache ne correspond alors plus a l'attente, mais il reste valide tant que
-    son remplacant n'est pas verifie: un telechargement en echec ne doit pas le detruire.
+    The cached file then no longer matches the expectation, but it stays valid as long as
+    its replacement is not verified: a failed download must not destroy it.
     """
     store = ApkStore(tmp_path)
     target = tmp_path / "org.example.app" / "42-arm64-v8a.apk"

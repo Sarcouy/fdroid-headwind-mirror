@@ -138,26 +138,32 @@ def _plan_one(
     run_id: int,
 ) -> PackagePlan:
     if headwind_status is PackageStatus.PAUSED:
-        return PackagePlan(pkg=entry.pkg, status=PlanStatus.SKIPPED, detail="suivi suspendu")
+        return PackagePlan(pkg=entry.pkg, status=PlanStatus.SKIPPED, detail="tracking paused")
     if application_id is None:
         return PackagePlan(
             pkg=entry.pkg,
             status=PlanStatus.SKIPPED,
-            detail="non resolu dans Headwind, voir la commande status",
+            detail="not resolved in Headwind, see the status command",
         )
 
     package = index.packages.get(entry.pkg)
     if package is None:
         repository.record_event(
-            run_id, "WARNING", "fdroid.not_found", "Paquet absent du depot F-Droid", pkg=entry.pkg
+            run_id,
+            "WARNING",
+            "fdroid.not_found",
+            "Package absent from the F-Droid repository",
+            pkg=entry.pkg,
         )
         return PackagePlan(
-            pkg=entry.pkg, status=PlanStatus.NOT_IN_FDROID, detail="absent du depot F-Droid"
+            pkg=entry.pkg,
+            status=PlanStatus.NOT_IN_FDROID,
+            detail="absent from the F-Droid repository",
         )
 
     resolution = resolve(entry.pkg, package, entry.target_abis, entry.blocked_anti_features)
     if resolution.candidate is None:
-        detail = resolution.rejection.detail if resolution.rejection else "version non resolue"
+        detail = resolution.rejection.detail if resolution.rejection else "version not resolved"
         repository.record_event(run_id, "ERROR", "fdroid.unresolved", detail, pkg=entry.pkg)
         return PackagePlan(
             pkg=entry.pkg,
@@ -175,13 +181,13 @@ def _plan_one(
             run_id,
             "ERROR",
             "headwind.version_unreadable",
-            "Versions Headwind illisibles, comparaison impossible",
+            "Unreadable Headwind versions, comparison impossible",
             pkg=entry.pkg,
         )
         return PackagePlan(
             pkg=entry.pkg,
             status=PlanStatus.SKIPPED,
-            detail="versions Headwind illisibles, comparaison impossible",
+            detail="unreadable Headwind versions, comparison impossible",
             candidate_version=candidate.version_name,
             candidate_version_code=candidate.version_code,
             signer_state=signer_state,
@@ -234,7 +240,7 @@ def _check_signer(
     if expected is None:
         repository.pin_expected_signer(pkg, candidate.signer)
         repository.record_event(
-            run_id, "INFO", "signer.pinned", f"Signataire epingle: {candidate.signer}", pkg=pkg
+            run_id, "INFO", "signer.pinned", f"Signer pinned: {candidate.signer}", pkg=pkg
         )
         return SignerState.PINNED_NOW, candidate.signer
 
@@ -245,7 +251,7 @@ def _check_signer(
         run_id,
         "ERROR",
         "signer.mismatch",
-        f"Signataire divergent: epingle {expected}, candidat {candidate.signer}",
+        f"Signer mismatch: pinned {expected}, candidate {candidate.signer}",
         pkg=pkg,
     )
     return SignerState.MISMATCH, expected
@@ -292,7 +298,7 @@ def _status(
 
 def _detail(status: PlanStatus, signer_state: SignerState) -> str:
     if status is PlanStatus.REJECTED and signer_state is SignerState.MISMATCH:
-        return "signataire divergent"
+        return "signer mismatch"
     if signer_state is SignerState.PINNED_NOW:
-        return "signataire epingle a cette execution"
+        return "signer pinned during this run"
     return ""

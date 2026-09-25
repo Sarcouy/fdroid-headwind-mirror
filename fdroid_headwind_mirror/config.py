@@ -98,20 +98,20 @@ def load_packages_file(path: Path) -> PackagesFile:
     try:
         raw = path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise ConfigError(f"{path}: fichier illisible ({exc})") from exc
+        raise ConfigError(f"{path}: unreadable file ({exc})") from exc
 
     try:
         document: Any = yaml.safe_load(raw)
     except yaml.YAMLError as exc:
-        raise ConfigError(f"{path}: YAML invalide ({exc})") from exc
+        raise ConfigError(f"{path}: invalid YAML ({exc})") from exc
 
     if document is None:
-        raise ConfigError(f"{path}: fichier vide")
+        raise ConfigError(f"{path}: empty file")
 
     try:
         parsed = PackagesFile.model_validate(document)
     except ValidationError as exc:
-        raise ConfigError(f"{path}: configuration invalide\n{exc}") from exc
+        raise ConfigError(f"{path}: invalid configuration\n{exc}") from exc
 
     _reject_duplicates(parsed, path)
     return parsed
@@ -126,5 +126,5 @@ def _reject_duplicates(parsed: PackagesFile, path: Path) -> None:
         seen.add(entry.pkg)
     if duplicates:
         raise ConfigError(
-            f"{path}: paquets declares plusieurs fois: {', '.join(sorted(duplicates))}"
+            f"{path}: packages declared more than once: {', '.join(sorted(duplicates))}"
         )

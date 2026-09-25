@@ -90,7 +90,7 @@ def reconcile(
     repository.delete_tracked_packages(dropped)
     for pkg in dropped:
         repository.record_event(
-            run_id, "INFO", "package.dropped", "Paquet retire de packages.yaml", pkg=pkg
+            run_id, "INFO", "package.dropped", "Package removed from packages.yaml", pkg=pkg
         )
 
     reports = [
@@ -170,7 +170,7 @@ def _record_resolution_event(
             run_id,
             "WARNING",
             "package.not_in_headwind",
-            "Aucune application Headwind ne porte ce package",
+            "No Headwind application carries this package",
             pkg=entry.pkg,
         )
     elif status is PackageStatus.AMBIGUOUS:
@@ -179,6 +179,6 @@ def _record_resolution_event(
             run_id,
             "ERROR",
             "package.ambiguous",
-            f"Plusieurs applications Headwind portent ce package: {ids}",
+            f"Several Headwind applications carry this package: {ids}",
             pkg=entry.pkg,
         )

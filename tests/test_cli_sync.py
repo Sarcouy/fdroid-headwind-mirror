@@ -247,14 +247,14 @@ def test_unreadable_headwind_versions_do_not_become_an_update(
     plan = by_pkg(report())["org.videolan.vlc"]
 
     assert plan["status"] == "SKIPPED"
-    assert "illisibles" in plan["detail"]
+    assert "unreadable" in plan["detail"]
 
 
 @pytest.mark.usefixtures("workspace")
 def test_dry_run_never_writes_to_headwind() -> None:
     report()
 
-    assert HEADWIND_CALLS, "aucun appel Headwind observe"
+    assert HEADWIND_CALLS, "no Headwind call observed"
     assert {method for method, _ in HEADWIND_CALLS} == {"GET"}
 
 
@@ -263,8 +263,8 @@ def test_exit_code_reflects_rejections() -> None:
     result = runner.invoke(cli.app, ["sync"])
 
     assert result.exit_code == 1
-    assert "REFUS" in result.stdout
-    assert "Aucune ecriture effectuee" in result.stdout
+    assert "REJECTED" in result.stdout
+    assert "No write performed" in result.stdout
 
 
 @pytest.mark.usefixtures("workspace")
@@ -294,7 +294,7 @@ def test_apply_creates_the_version_and_records_it(
     assert [path for method, path in HEADWIND_CALLS if method == "PUT"] == [
         "/rest/private/applications/versions"
     ]
-    assert "1 version(s) creee(s)" in result.stdout
+    assert "1 version(s) created" in result.stdout
     assert "autoUpdate" in result.stdout
     with StateRepository(workspace / "state.db") as repository:
         tracked = repository.get_tracked_package("org.videolan.vlc")
@@ -335,7 +335,7 @@ def test_apply_links_the_version_when_auto_approve_is_set(
     assert [path for method, path in HEADWIND_CALLS if method == "POST"] == [
         "/rest/private/applications/version/configurations"
     ]
-    assert "1 version(s) rattachee(s)" in result.stdout
+    assert "1 version(s) linked" in result.stdout
     with StateRepository(workspace / "state.db") as repository:
         tracked = repository.get_tracked_package("org.videolan.vlc")
         assert tracked is not None
@@ -352,7 +352,7 @@ def test_apply_leaves_the_version_unlinked_without_auto_approve(
     result = runner.invoke(cli.app, ["sync", "--apply"])
 
     assert not [path for method, path in HEADWIND_CALLS if method == "POST"]
-    assert "approbation manuelle requise" in result.stdout
+    assert "manual approval required" in result.stdout
 
 
 @pytest.mark.usefixtures("workspace")
@@ -366,7 +366,7 @@ def test_dry_run_flags_a_headwind_version_carrying_the_candidate_name(
 
     assert plan["status"] == "UPDATE_AVAILABLE"
     assert plan["same_name_version_id"] == 41
-    assert "version Headwind #41: --apply bloquera la publication" in text
+    assert "Headwind version #41: --apply will block the publication" in text
 
 
 @pytest.mark.parametrize("packages", [PACKAGES, AUTO_APPROVED])
@@ -382,7 +382,7 @@ def test_apply_never_rewrites_a_version_carrying_the_same_name(
     assert {method for method, _ in HEADWIND_CALLS} == {"GET"}
     assert "org.videolan.vlc 3.7.1: blocked" in result.stdout
     assert "(#41, versionCode 0)" in result.stdout
-    assert "0 version(s) creee(s), 0 reecrite(s) en place, 1 bloquee(s)" in result.stdout
+    assert "0 version(s) created, 0 rewritten in place, 1 blocked" in result.stdout
     lines = [json.loads(line) for line in result.stderr.splitlines() if line.strip()]
     summary = [line for line in lines if line["event"] == "sync.finished"]
     assert summary[0]["publications_blocked"] == 1
