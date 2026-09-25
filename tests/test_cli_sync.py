@@ -107,10 +107,14 @@ def headwind_handler(request: httpx.Request) -> httpx.Response:
 
 
 def headwind_read(path: str) -> httpx.Response:
+    # La version creee n'a encore aucun lien, donc action 0: c'est la version precedente,
+    # installee dans la configuration 3, qui designe ou la rattacher.
     if path.endswith("/applications/version/700/configurations"):
         return envelope(
-            [{"configurationId": 3, "applicationId": 7, "action": 1, "versionText": 700}]
+            [{"configurationId": 3, "applicationId": 7, "action": 0, "versionText": 700}]
         )
+    if path.endswith("/applications/configurations/7"):
+        return envelope([{"configurationId": 3, "applicationId": 7, "action": 1}])
     if path.endswith("/applications/search"):
         return envelope(APPLICATIONS)
     for app_id, versions in VERSIONS.items():

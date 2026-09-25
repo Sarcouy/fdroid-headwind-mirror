@@ -81,7 +81,15 @@ COALESCE(configurationApplications.longTap,     caPrev.longTap)                 
 ```
 
 Le service n'a donc **pas** à recopier lui-même l'ordre des icônes, le keycode ou la visibilité : il renvoie
-tel quel ce que le `GET` lui a retourné, en ne modifiant que `action` et `notify`.
+telles quelles les entrées qu'il retient, en ne posant que `action` et `notify`.
+
+**L'action, elle, n'est pas héritée.** La même requête lit `configurationApplications.action AS action` sur le
+seul lien de la version demandée : `caPrev` ne sert qu'aux réglages d'affichage ci-dessus. Le modèle serveur
+déclarant `int action`, une configuration sans lien vers cette version revient avec `action = 0`, « ne pas
+installer ». Pour une version neuve, c'est le cas de **toutes** les configurations, ce que le panneau note
+lui-même en commentaire ; il ne reprend l'action des autres versions qu'en recopiant celle des liens de
+l'application (`GET /private/applications/configurations/{id}`). C'est donc au service de désigner les
+configurations où installer la version (§12.2).
 
 ### 2.4 Le remplacement de l'ancienne version est géré
 
@@ -354,23 +362,26 @@ sépare.
 }
 ```
 
-Chaque entrée est celle retournée par le `GET` correspondant, **réémise telle quelle**, seuls `action` et
-`notify` étant positionnés par le service. Les entrées qui reviennent avec un `id` non nul (configurations
-déjà basculées par l'auto-update) sont renvoyées avec cet `id` : l'`INSERT` du serveur ne comporte pas la
-colonne `id`, qui est donc simplement ignorée.
+Chaque entrée émise est celle retournée par le `GET` correspondant, **réémise telle quelle**, seuls `action`
+et `notify` étant positionnés par le service ; toutes ne sont pas émises (§12.2). Les entrées qui reviennent
+avec un `id` non nul (liens existants de cette version) sont renvoyées avec cet `id` : l'`INSERT` du serveur
+ne comporte pas la colonne `id`, qui est donc simplement ignorée.
 
-Trois pièges :
+Quatre pièges :
 
 - `versionText` est déclaré `int` côté serveur et reçoit en réalité l'identifiant numérique de la version
   (`applicationVersions.id AS versionText` dans la requête). Y placer une chaîne comme `"1.4.2"` provoque une
   erreur de désérialisation.
 - L'appel est **remplaçant pour la version ciblée uniquement** : il purge les liens de `applicationVersionId`
-  puis réinsère ceux transmis. Une configuration omise de la liste ne perd rien — elle conserve son lien vers
-  l'ancienne version, car `uninstallOtherVersions` ne s'exécute que pour les configurations effectivement
-  transmises avec `action = 1`. L'omission est donc inerte, pas destructrice : elle laisse simplement la
-  configuration sur l'ancienne version.
+  puis réinsère ceux transmis. Une configuration omise conserve ses liens vers les autres versions, car
+  `uninstallOtherVersions` ne s'exécute que pour les configurations transmises avec `action = 1` : l'omission
+  la laisse simplement sur l'ancienne version. En revanche, un lien existant de la version ciblée disparaît
+  s'il est omis — d'où la réémission systématique de ceux qui portent `action = 2`.
 - Corollaire : pour qu'une configuration bascule, elle **doit** figurer dans l'appel. Toutes les
   configurations cibles sont donc envoyées en une seule requête.
+- `insertApplicationVersionConfigurations` insère **chaque** entrée reçue, sans filtre : une entrée à
+  `action = 0` crée un lien « ne pas installer » dans une configuration qui n'installait pas l'application.
+  Le panneau n'émet jamais de telles entrées, le service non plus.
 
 ### Authentification
 
@@ -868,7 +879,8 @@ flowchart TD
     C -- non --> S1[IGNORÉ, approbation manuelle attendue]
     C -- oui --> D[GET versions, retrouver l'id par versionCode]
     D -- absente --> S2[ÉCHEC]
-    D -- trouvée --> E["GET /applications/version/{id}/configurations"]
+    D -- trouvée --> L["GET /applications/configurations/{appId}<br/>configurations qui installent l'application"]
+    L --> E["GET /applications/version/{id}/configurations"]
     E --> F{une configuration installe-t-elle l'application ?}
     F -- non --> S3[IGNORÉ, progression enregistrée quand même]
     F -- oui --> G[POST /applications/version/configurations]
@@ -882,10 +894,18 @@ Quatre décisions structurantes :
    des modèles : le passage par les modèles typés (`extra="ignore"`) supprimerait les champs non déclarés, et
    convertirait `versionText` — entier côté serveur — en chaîne, ce que sa désérialisation refuse (§5).
    C'est la seule lecture du client qui échappe volontairement au typage.
-2. **`action` n'est jamais réécrit.** Le mettre à `1` partout installerait l'application sur des
-   configurations qui ne la déployaient pas, et annulerait une désinstallation demandée (`action = 2`).
-   L'héritage `COALESCE` côté serveur (§2.3) l'a déjà positionné à `1` là où il le faut. Seul `notify` est
-   posé par le service, et uniquement sur les entrées qui installent réellement.
+2. **`action` est posé là où l'application est installée, et seulement là.** Headwind ne reporte pas
+   l'action d'une version à l'autre (§2.3) : une version neuve revient à `0` partout. Le service lit donc
+   les liens de l'application toutes versions confondues et, pour chaque configuration où l'une d'elles porte
+   `action = 1`, émet l'entrée de la nouvelle version avec `action = 1` et `notify = true`. Une entrée de la
+   version déjà marquée `action = 2` est réémise telle quelle, sans notification : une désinstallation
+   demandée n'est jamais annulée. Aucune autre entrée n'est émise, comme dans le panneau : le serveur
+   insérerait une entrée à `0` telle quelle (§5).
+
+   Une version antérieure de cette conception tenait l'action pour héritée par le `COALESCE`. Le rattachement
+   ne trouvait alors aucune configuration pour une version neuve et enregistrait la progression sans rien
+   rattacher ; pour une version déjà liée, il renvoyait toutes les configurations, et créait des liens à `0`
+   là où l'application n'était pas installée.
 3. **L'identifiant de version est retrouvé par `versionCode`**, jamais repris de la publication : il peut
    manquer (réponse de création inexploitable) et il n'existe pas du tout quand le rattachement reprend le
    travail d'une exécution précédente.

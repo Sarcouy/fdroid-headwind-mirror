@@ -11,6 +11,7 @@ from fdroid_headwind_mirror.headwind.errors import HeadwindError
 from fdroid_headwind_mirror.state.repository import StateRepository, TrackedPackage
 
 _INSTALL_ACTION = 1
+_UNINSTALL_ACTION = 2
 
 
 class LinkingOutcome(StrEnum):
@@ -110,12 +111,12 @@ def _link_one(
         return _failed(entry, version_code, target, repository, run_id)
     version_id, configurations = target
 
-    targets = sum(1 for item in configurations if item.get("action") == _INSTALL_ACTION)
+    targets = sum(1 for item in configurations if item["action"] == _INSTALL_ACTION)
     if targets == 0:
         return _nothing_to_link(entry, version_code, version_id, repository, run_id)
 
     try:
-        client.link_version_configurations(version_id, _with_notification(configurations))
+        client.link_version_configurations(version_id, configurations)
     except HeadwindError as exc:
         return _failed(entry, version_code, f"rattachement refuse: {exc}", repository, run_id)
 
@@ -140,16 +141,29 @@ def _resolve_target(
         version_id = _resolve_version_id(application_id, version_code, client)
         if version_id is None:
             return f"version {version_code} introuvable dans Headwind"
-        return version_id, client.get_version_configurations(version_id)
+        installing = {
+            link.configuration_id
+            for link in client.get_application_configurations(application_id)
+            if link.installs_application
+        }
+        return version_id, _links_to_send(client.get_version_configurations(version_id), installing)
     except HeadwindError as exc:
         return f"liens illisibles: {exc}"
 
 
-def _with_notification(configurations: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    # `action` n'est jamais reecrit: le mettre a 1 partout installerait l'application sur des
-    # configurations qui ne la deployaient pas, et annulerait une desinstallation demandee
-    # (action = 2). L'heritage COALESCE cote serveur a deja positionne 1 la ou il le faut.
-    return [{**item, "notify": item.get("action") == _INSTALL_ACTION} for item in configurations]
+def _links_to_send(candidates: list[dict[str, Any]], installing: set[int]) -> list[dict[str, Any]]:
+    # Headwind ne reporte pas l'action d'une version a l'autre: une version neuve revient a 0,
+    # "ne pas installer", dans toutes les configurations. L'action 1 est donc posee la ou une
+    # version de l'application est installee, sauf desinstallation demandee sur celle-ci. Comme
+    # le panneau, aucune ligne a 0 n'est emise: le serveur l'insererait telle quelle, creant un
+    # lien dans une configuration qui n'installait pas l'application.
+    links: list[dict[str, Any]] = []
+    for item in candidates:
+        if item.get("action") == _UNINSTALL_ACTION:
+            links.append({**item, "notify": False})
+        elif item.get("configurationId") in installing:
+            links.append({**item, "action": _INSTALL_ACTION, "notify": True})
+    return links
 
 
 def _resolve_version_id(
