@@ -323,14 +323,17 @@ Bloquer aussi avec `auto_approve: true` est délibéré :
 - la réécriture efface l'ancien build sans retour arrière possible, et Headwind ne peut pas tenir deux
   versions du même nom ;
 - appliquée à une version ancienne, elle change ce qu'installent des configurations volontairement laissées
-  sur cette version, sans que `latestVersion` bouge ;
-- le rattachement qui suivrait renverrait toutes les lignes de la version, y compris celles des
-  configurations qui n'installaient pas l'application, et le serveur les insère sans filtre. Ce défaut du
-  rattachement est traité à part.
+  sur cette version, sans que `latestVersion` bouge.
+
+Une troisième raison a motivé ce choix et n'a plus cours : le rattachement renvoyait alors toutes les lignes
+de la version, y compris celles des configurations qui n'installaient pas l'application, et le serveur les
+insérait sans filtre. Il n'émet désormais que les configurations où l'application est installée (§12.2,
+décision 2).
 
 Le coût est assumé : un rebuild publié par F-Droid sous le même `versionName` avec un `versionCode`
-supérieur n'est jamais livré automatiquement. Assouplir la règle pour `auto_approve: true`, au moins quand
-l'homonyme est la `latestVersion`, ne se discutera qu'une fois le rattachement corrigé.
+supérieur n'est jamais livré automatiquement. Le rattachement étant corrigé, assouplir la règle pour
+`auto_approve: true` peut désormais se discuter lorsque l'homonyme est la `latestVersion` : seule resterait
+alors la perte de l'ancien build.
 
 Le conflit se lève dans Headwind, par un opérateur : il accepte la réécriture en modifiant lui-même la
 version existante, ou libère le nom en la renommant ou en la supprimant, après quoi le service crée la
