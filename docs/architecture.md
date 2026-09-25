@@ -1,48 +1,47 @@
-# fdroid-headwind-mirror — Conception
+# fdroid-headwind-mirror — Design
 
 ## TL;DR
 
-Un service Python autonome, déclenché une fois par jour, qui pour chaque paquet F-Droid explicitement suivi :
-compare la version publiée sur F-Droid à celle enregistrée dans Headwind MDM, télécharge et vérifie l'APK,
-crée une nouvelle `ApplicationVersion` dans Headwind, puis rattache cette version aux configurations qui
-utilisaient la version précédente et notifie les appareils.
+A standalone Python service, triggered once a day, which for each explicitly tracked F-Droid package: compares
+the version published on F-Droid with the one recorded in Headwind MDM, downloads and verifies the APK, creates a
+new `ApplicationVersion` in Headwind, then links that version to the configurations that used the previous
+version and notifies the devices.
 
-Point structurant : **Headwind fait déjà une partie du travail de propagation**. Le service n'a donc pas à
-réimplémenter la logique de mise à jour des configurations — il doit surtout la déclencher correctement et
-combler ses angles morts.
+Key point: **Headwind already does part of the propagation work**. The service therefore does not have to
+reimplement the configuration update logic — it mostly has to trigger it correctly and fill its blind spots.
 
 ---
 
-## 1. Contexte
+## 1. Context
 
-| Élément | Rôle |
+| Element | Role |
 | --- | --- |
-| F-Droid | Source des APK et des métadonnées (versions, signatures, hashes, ABI) |
-| Headwind MDM | Serveur MDM : stocke les applications, leurs versions, les configurations et les appareils |
-| `fdroid-headwind-mirror` | Le service à construire : fait le pont entre les deux, une fois par jour |
+| F-Droid | Source of the APKs and their metadata (versions, signatures, hashes, ABIs) |
+| Headwind MDM | MDM server: stores the applications, their versions, the configurations and the devices |
+| `fdroid-headwind-mirror` | The service to build: bridges the two, once a day |
 
-L'objectif énoncé : quand un APK F-Droid est ajouté dans Headwind, le service vérifie quotidiennement s'il
-existe une version plus récente, l'enregistre dans Headwind, et la rend disponible aux appareils via les
-configurations qui référencent déjà cette application.
+The stated goal: when an F-Droid APK is added to Headwind, the service checks every day whether a newer version
+exists, records it in Headwind, and makes it available to the devices through the configurations that already
+reference that application.
 
 ---
 
-## 2. Ce que Headwind fait déjà (à ne pas réimplémenter)
+## 2. What Headwind already does (not to be reimplemented)
 
-Cette section est le résultat de la lecture du code de [`hmdm-server`](https://github.com/h-mdm/hmdm-server).
-Elle conditionne tout le reste de la conception.
+This section comes from reading the code of [`hmdm-server`](https://github.com/h-mdm/hmdm-server). The rest of
+the design depends on it.
 
-### 2.1 `latestVersion` est recalculé automatiquement
+### 2.1 `latestVersion` is recalculated automatically
 
-À chaque `insertApplicationVersion` qui insère réellement une ligne, le serveur appelle
-`recalculateLatestVersion(applicationId)`, qui positionne `applications.latestVersion` sur la version dont
-l'index de comparaison est le plus élevé. Une version dont le nom existe déjà n'est pas insérée mais
-réécrite en place, sans ce recalcul (§5, « Déduplication par nom de version »).
+On every `insertApplicationVersion` that actually inserts a row, the server calls
+`recalculateLatestVersion(applicationId)`, which sets `applications.latestVersion` to the version with the
+highest comparison index. A version whose name already exists is not inserted but rewritten in place, without
+this recalculation (§5, "Deduplication by version name").
 
-### 2.2 La propagation vers les configurations est partiellement automatique
+### 2.2 Propagation to the configurations is partly automatic
 
-Toujours dans `insertApplicationVersion`, si la version créée devient la `latestVersion` de l'application,
-le serveur exécute `doAutoUpdateToApplicationVersion`, dont le cœur est :
+Still in `insertApplicationVersion`, if the created version becomes the application's `latestVersion`, the
+server runs `doAutoUpdateToApplicationVersion`, whose core is:
 
 ```sql
 UPDATE configurationApplications
@@ -54,23 +53,22 @@ WHERE applicationId = :appId
                 AND configurations.autoUpdate IS TRUE)
 ```
 
-Conséquences directes :
+Direct consequences:
 
-- Les configurations avec `autoUpdate = TRUE` sont **basculées automatiquement** sur la nouvelle version.
-- Les configurations avec `autoUpdate = FALSE` ne bougent pas : c'est au service de les traiter.
-- **Aucune notification push n'est émise** par ce chemin. Les appareils ne verront la mise à jour qu'à
-  leur prochaine synchronisation périodique.
+- Configurations with `autoUpdate = TRUE` are **moved automatically** to the new version.
+- Configurations with `autoUpdate = FALSE` do not move: the service has to handle them.
+- **No push notification is sent** on this path. Devices only see the update at their next periodic sync.
 
-Il n'en découle pas deux chemins de code. Le `POST /rest/private/applications/version/configurations`
-décrit en §5 couvre les deux cas avec le même appel : la notification est pilotée par le drapeau `notify` de
-la requête, pas par le fait qu'un changement ait réellement eu lieu en base. Pour une configuration déjà
-basculée par l'auto-update, l'appel purge puis réinsère un lien identique — l'état final est inchangé, et la
-notification part quand même.
+This does not lead to two code paths. The `POST /rest/private/applications/version/configurations` described
+in §5 covers both cases with the same call: the notification is driven by the request's `notify` flag, not by
+whether a change actually happened in the database. For a configuration already moved by the auto-update, the
+call purges then reinserts an identical link — the final state is unchanged, and the notification is sent
+anyway.
 
-### 2.3 Les réglages d'affichage sont hérités côté serveur
+### 2.3 Display settings are inherited server-side
 
-`GET /rest/private/applications/version/{id}/configurations` s'appuie sur une requête qui joint le lien de
-la version précédente (`caPrev`) et applique un `COALESCE` :
+`GET /rest/private/applications/version/{id}/configurations` relies on a query that joins the link of the
+previous version (`caPrev`) and applies a `COALESCE`:
 
 ```sql
 COALESCE(configurationApplications.showIcon,   caPrev.showIcon, applications.showIcon) AS showIcon,
@@ -80,60 +78,60 @@ COALESCE(configurationApplications.bottom,      caPrev.bottom)                  
 COALESCE(configurationApplications.longTap,     caPrev.longTap)                         AS longTap
 ```
 
-Le service n'a donc **pas** à recopier lui-même l'ordre des icônes, le keycode ou la visibilité : il renvoie
-telles quelles les entrées qu'il retient, en ne posant que `action` et `notify`.
+The service therefore does **not** have to copy the icon order, the keycode or the visibility itself: it sends
+back the entries it keeps as they are, setting only `action` and `notify`.
 
-**L'action, elle, n'est pas héritée.** La même requête lit `configurationApplications.action AS action` sur le
-seul lien de la version demandée : `caPrev` ne sert qu'aux réglages d'affichage ci-dessus. Le modèle serveur
-déclarant `int action`, une configuration sans lien vers cette version revient avec `action = 0`, « ne pas
-installer ». Pour une version neuve, c'est le cas de **toutes** les configurations, ce que le panneau note
-lui-même en commentaire ; il ne reprend l'action des autres versions qu'en recopiant celle des liens de
-l'application (`GET /private/applications/configurations/{id}`). C'est donc au service de désigner les
-configurations où installer la version (§12.2).
+**The action, however, is not inherited.** The same query reads `configurationApplications.action AS action`
+from the requested version's link only: `caPrev` only feeds the display settings above. Since the server model
+declares `int action`, a configuration without a link to this version comes back with `action = 0`, "do not
+install". For a new version this is the case for **all** configurations, as the panel itself notes in a
+comment; it only takes over the action of the other versions by copying the one from the application's links
+(`GET /private/applications/configurations/{id}`). It is therefore up to the service to designate the
+configurations where the version gets installed (§12.2).
 
-### 2.4 Le remplacement de l'ancienne version est géré
+### 2.4 Replacing the old version is handled
 
-`updateApplicationVersionConfigurations` purge d'abord les liens de la version cible, puis pour chaque lien
-avec `action = 1` exécute `uninstallOtherVersions`, qui supprime les liens des autres versions du même
-paquet dans la configuration (en préservant ceux marqués `action = 2`, c'est-à-dire « à désinstaller »).
-Il n'y a donc pas de risque de doublon de version dans une configuration.
+`updateApplicationVersionConfigurations` first purges the target version's links, then for each link with
+`action = 1` runs `uninstallOtherVersions`, which deletes the links of the other versions of the same package
+in the configuration (keeping those marked `action = 2`, i.e. "to uninstall"). There is therefore no risk of a
+duplicate version in a configuration.
 
-### 2.5 L'APK n'a pas besoin d'être hébergé par Headwind
+### 2.5 The APK does not need to be hosted by Headwind
 
-Dans `insertApplicationVersion`, le traitement de fichier est conditionnel :
+In `insertApplicationVersion`, file handling is conditional:
 
 ```java
 final String filePath = applicationVersion.getFilePath();
-if (filePath != null && !filePath.trim().isEmpty()) { /* déplacement + analyse APK */ }
+if (filePath != null && !filePath.trim().isEmpty()) { /* move + APK analysis */ }
 ```
 
-Une version créée avec uniquement une `url` est acceptée : c'est le mode retenu (§8), et il dispense
-entièrement le service d'envoyer un fichier à Headwind.
+A version created with only a `url` is accepted: this is the chosen mode (§8), and it spares the service from
+ever sending a file to Headwind.
 
 ---
 
-## 3. Architecture générale
+## 3. Overall architecture
 
 ```mermaid
 flowchart LR
-    subgraph EXT["Sources externes"]
+    subgraph EXT["External sources"]
         FD["F-Droid<br/>entry.json / index-v2.json / APK"]
     end
 
     subgraph SVC["fdroid-headwind-mirror"]
-        SCHED["Ordonnanceur<br/>systemd timer / CronJob"]
-        FETCH["Client F-Droid<br/>index + téléchargement"]
-        VERIF["Vérification<br/>sha256 + signataire + ABI"]
-        PLAN["Planificateur<br/>diff des versions"]
-        PUSH["Client Headwind<br/>version + liens"]
-        DB[("État local<br/>SQLite")]
-        REPORT["Rapport / alertes"]
+        SCHED["Scheduler<br/>systemd timer / CronJob"]
+        FETCH["F-Droid client<br/>index + download"]
+        VERIF["Verification<br/>sha256 + signer + ABI"]
+        PLAN["Planner<br/>version diff"]
+        PUSH["Headwind client<br/>version + links"]
+        DB[("Local state<br/>SQLite")]
+        REPORT["Report / alerts"]
     end
 
     subgraph HW["Headwind MDM"]
         API["REST API /rest/private/*"]
         CONF["Configurations"]
-        DEV["Appareils Android"]
+        DEV["Android devices"]
     end
 
     SCHED --> FETCH
@@ -146,22 +144,22 @@ flowchart LR
     API --> CONF
     CONF --> DEV
     PUSH --> REPORT
-    VERIF -. "signataire divergent" .-> REPORT
+    VERIF -. "signer mismatch" .-> REPORT
 ```
 
-### Principes
+### Principles
 
-1. **Opt-in explicite.** Le service ne touche qu'aux paquets déclarés dans sa liste de suivi. Il ne va jamais
-   déduire « cette application Headwind a un `pkg` qui existe sur F-Droid, donc je la mets à jour » — ce qui
-   écraserait par exemple un APK signé par le Play Store avec un APK signé par F-Droid.
-2. **Sans état dans Headwind.** Headwind reste la source de vérité du parc. L'état local ne sert qu'au
-   suivi (signataire attendu, dernière version poussée, historique des exécutions).
-3. **Idempotent.** Relancer une exécution sur un parc déjà à jour ne produit aucune écriture.
-4. **Échec isolé.** Un paquet en erreur n'interrompt pas le traitement des autres.
+1. **Explicit opt-in.** The service only touches the packages declared in its tracking list. It never infers
+   "this Headwind application has a `pkg` that exists on F-Droid, so I update it" — which would for instance
+   overwrite an APK signed by the Play Store with an APK signed by F-Droid.
+2. **Stateless in Headwind.** Headwind remains the source of truth for the fleet. The local state is only used
+   for tracking (expected signer, last pushed version, run history).
+3. **Idempotent.** Running again on a fleet that is already up to date produces no write.
+4. **Isolated failure.** A package in error does not interrupt the processing of the others.
 
 ---
 
-## 4. Flux d'une exécution quotidienne
+## 4. Flow of a daily run
 
 ```mermaid
 sequenceDiagram
@@ -170,90 +168,89 @@ sequenceDiagram
     participant S as Service
     participant F as F-Droid
     participant H as Headwind API
-    participant D as Appareils
+    participant D as Devices
 
-    T->>S: déclenchement quotidien
+    T->>S: daily trigger
     S->>F: GET /repo/entry.json (If-None-Match)
-    alt index inchangé
+    alt index unchanged
         F-->>S: 304 Not Modified
-        S->>S: fin de l'exécution
-    else index modifié
+        S->>S: end of the run
+    else index modified
         F-->>S: 200 + timestamp
-        S->>F: GET /repo/index-v2.json (ou diff incrémental)
-        F-->>S: métadonnées des paquets
+        S->>F: GET /repo/index-v2.json (or incremental diff)
+        F-->>S: package metadata
 
-        loop pour chaque paquet suivi
-            S->>S: résoudre la version candidate (versionCode)
-            S->>S: candidate > dernière poussée ?
-            S->>S: signataire == signataire attendu ?
+        loop for each tracked package
+            S->>S: resolve the candidate version (versionCode)
+            S->>S: candidate > last pushed?
+            S->>S: signer == expected signer?
 
             S->>H: GET /rest/private/applications/configurations/{appId}
-            H-->>S: configurations utilisant l'application (état AVANT)
+            H-->>S: configurations using the application (BEFORE state)
 
-            S->>F: GET de l'APK
-            F-->>S: fichier APK
-            S->>S: vérifier sha256 vs index
+            S->>F: GET the APK
+            F-->>S: APK file
+            S->>S: check sha256 against the index
 
             S->>H: GET /rest/private/applications/{appId}/versions
-            H-->>S: versions existantes
-            Note over S: nom déjà porté ⇒ publication bloquée, aucune écriture (§5)
+            H-->>S: existing versions
+            Note over S: name already taken ⇒ publication blocked, no write (§5)
 
             S->>H: PUT /rest/private/applications/versions
-            Note over H: recalculateLatestVersion<br/>+ autoUpdate des configurations concernées
-            H-->>S: version créée (id)
+            Note over H: recalculateLatestVersion<br/>+ autoUpdate of the configurations concerned
+            H-->>S: created version (id)
 
             S->>H: GET /rest/private/applications/{appId}
-            H-->>S: latestVersion (contrôle de cohérence)
+            H-->>S: latestVersion (consistency check)
 
             S->>H: GET /rest/private/applications/version/{newId}/configurations
-            H-->>S: liens candidats (réglages hérités)
+            H-->>S: candidate links (inherited settings)
 
             S->>H: POST /rest/private/applications/version/configurations<br/>action=1, notify=true
-            H->>D: notification push
-            S->>S: enregistrer last_pushed_version_code
+            H->>D: push notification
+            S->>S: record last_pushed_version_code
         end
     end
 
-    S->>S: rapport d'exécution
+    S->>S: run report
 ```
 
-### Ordre des appels : un point à ne pas inverser
+### Call order: a point not to invert
 
-Le relevé des configurations utilisant l'application (`GET /rest/private/applications/configurations/{appId}`)
-doit être fait **avant** la création de la nouvelle version. Après celle-ci, `doAutoUpdateToApplicationVersion`
-a déjà pu déplacer les liens des configurations `autoUpdate = TRUE` vers la nouvelle version, ce qui rend
-impossible de distinguer après coup les configurations qui utilisaient réellement l'application.
+Reading the configurations that use the application (`GET /rest/private/applications/configurations/{appId}`)
+must happen **before** the new version is created. Afterwards, `doAutoUpdateToApplicationVersion` may already
+have moved the links of the `autoUpdate = TRUE` configurations to the new version, which makes it impossible to
+tell after the fact which configurations actually used the application.
 
-### Contrôle de cohérence sur `latestVersion`
+### Consistency check on `latestVersion`
 
-Après création de la version, le service relit l'application et compare `latestVersion` à l'identifiant de la
-version qu'il vient de créer. Si les deux diffèrent, cela signifie que le classement de versions côté serveur
-n'a pas retenu la nouvelle version (voir §7.4) : l'auto-update ne s'est pas déclenché, et le service doit
-alors forcer explicitement le lien. Ce contrôle rend le service robuste face aux formats de version exotiques.
+After creating the version, the service reads the application again and compares `latestVersion` with the id of
+the version it has just created. If the two differ, the server-side version ranking did not select the new
+version (see §7.4): the auto-update did not fire, and the service must then force the link explicitly. This
+check makes the service robust against exotic version formats.
 
-La comparaison ne vaut que pour un identifiant nouveau. Un identifiant qui existait avant l'appel signale une
-réécriture en place (§5), qui laisse `latestVersion` inchangé par construction : elle est rapportée comme
-telle, jamais comme une bascule.
+The comparison only holds for a new id. An id that existed before the call signals an in-place rewrite (§5),
+which leaves `latestVersion` unchanged by construction: it is reported as such, never as a switch.
 
 ---
 
-## 5. API Headwind utilisée
+## 5. Headwind API used
 
-Toutes les routes sont préfixées par `/rest` et requièrent l'en-tête `Authorization: Bearer <token>`.
+All routes are prefixed with `/rest` and require the `Authorization: Bearer <token>` header.
 
-| Étape | Méthode | Chemin | Permission requise |
+| Step | Method | Path | Required permission |
 | --- | --- | --- | --- |
-| Lister les applications | `GET` | `/private/applications/search` | `applications` |
-| Détail d'une application | `GET` | `/private/applications/{id}` | `applications` |
-| Versions d'une application | `GET` | `/private/applications/{id}/versions` | `applications` |
-| Configurations d'une application | `GET` | `/private/applications/configurations/{id}` | `applications` |
-| Envoi de l'APK (étape 1) | `POST` | `/private/web-ui-files` (multipart `file`) | `edit_files` |
-| Validation de l'APK (étape 2) | `POST` | `/private/web-ui-files/update` | `edit_files` |
-| Création de la version | `PUT` | `/private/applications/versions` | `edit_application_versions` |
-| Liens candidats de la version | `GET` | `/private/applications/version/{id}/configurations` | `applications` |
-| Rattachement aux configurations | `POST` | `/private/applications/version/configurations` | `edit_application_versions` |
+| List the applications | `GET` | `/private/applications/search` | `applications` |
+| Application details | `GET` | `/private/applications/{id}` | `applications` |
+| Versions of an application | `GET` | `/private/applications/{id}/versions` | `applications` |
+| Configurations of an application | `GET` | `/private/applications/configurations/{id}` | `applications` |
+| APK upload (step 1) | `POST` | `/private/web-ui-files` (multipart `file`) | `edit_files` |
+| APK validation (step 2) | `POST` | `/private/web-ui-files/update` | `edit_files` |
+| Version creation | `PUT` | `/private/applications/versions` | `edit_application_versions` |
+| Candidate links of the version | `GET` | `/private/applications/version/{id}/configurations` | `applications` |
+| Linking to the configurations | `POST` | `/private/applications/version/configurations` | `edit_application_versions` |
 
-### Corps de `PUT /rest/private/applications/versions`
+### Body of `PUT /rest/private/applications/versions`
 
 ```json
 {
@@ -265,13 +262,13 @@ Toutes les routes sont préfixées par `/rest` et requièrent l'en-tête `Author
 }
 ```
 
-`id` absent ⇒ création, **sauf si une version du même nom existe déjà** (section suivante). Pour un paquet
-publié par ABI, on envoie plutôt `split: true` avec `urlArmeabi` et `urlArm64`.
+No `id` ⇒ creation, **unless a version with the same name already exists** (next section). For a package
+published per ABI, send `split: true` with `urlArmeabi` and `urlArm64` instead.
 
-### Déduplication par nom de version
+### Deduplication by version name
 
-`insertApplicationVersion` (`ApplicationDAO`) cherche d'abord une version homonyme : `getDuplicateAppVersion`
-appelle `getDuplicateVersionForApp(appId, -1, version)`, dont la requête est
+`insertApplicationVersion` (`ApplicationDAO`) first looks for a same-name version: `getDuplicateAppVersion`
+calls `getDuplicateVersionForApp(appId, -1, version)`, whose query is
 
 ```sql
 SELECT COALESCE(
@@ -279,71 +276,66 @@ SELECT COALESCE(
    WHERE applicationId = :appId AND version = :version AND id <> -1), 0)
 ```
 
-La recherche porte sur **toutes** les versions de l'application, pas seulement la dernière, et compare la
-chaîne `version` à l'identique. Quand elle aboutit, le serveur reprend l'identifiant trouvé et exécute
-`updateApplicationVersion` sur la ligne existante au lieu d'en insérer une nouvelle :
+The lookup covers **all** the versions of the application, not only the latest, and compares the `version`
+string exactly. When it finds one, the server takes over the id found and runs `updateApplicationVersion` on the
+existing row instead of inserting a new one:
 
-| Élément | Après la réécriture |
+| Element | After the rewrite |
 | --- | --- |
-| `version`, `versionCode`, `split` | valeurs de la requête |
-| `url` | valeur de la requête, donc `NULL` pour une version split |
-| `urlArmeabi`, `urlArm64` | valeurs de la requête ; pour une version split, l'architecture absente de la requête garde l'URL de l'ancienne ligne |
-| `apkHash` | effacé, la requête n'en portant pas |
-| `latestVersion` de l'application | inchangé : ce chemin n'appelle pas `recalculateLatestVersion` |
-| Liens `configurationApplications` | conservés ; si la ligne est la `latestVersion`, l'auto-update (§2.2) s'applique en plus |
+| `version`, `versionCode`, `split` | values from the request |
+| `url` | value from the request, hence `NULL` for a split version |
+| `urlArmeabi`, `urlArm64` | values from the request; for a split version, the architecture missing from the request keeps the URL of the old row |
+| `apkHash` | erased, since the request carries none |
+| The application's `latestVersion` | unchanged: this path does not call `recalculateLatestVersion` |
+| `configurationApplications` links | kept; if the row is the `latestVersion`, the auto-update (§2.2) applies as well |
 
-La réponse renvoie la ligne existante, donc un identifiant qui existait avant l'appel.
+The response returns the existing row, hence an id that existed before the call.
 
-Côté appareil, le launcher compare les `versionCode` dès que celui de la configuration est non nul et non
-zéro (`InstallUtils.areVersionsEqual`), et les noms sinon. Une version saisie sans code (`versionCode` 0),
-puis réécrite avec un code réel, cesse donc d'être reconnue comme installée : chaque appareil des
-configurations rattachées à cette ligne réinstalle l'application à sa prochaine synchronisation, **sans
-aucun rattachement**. `auto_approve: false` n'a alors plus d'effet.
+On the device side, the launcher compares the `versionCode` values as soon as the configuration's is non-null
+and non-zero (`InstallUtils.areVersionsEqual`), and the names otherwise. A version entered without a code
+(`versionCode` 0), then rewritten with a real code, therefore stops being recognised as installed: every device
+of the configurations linked to that row reinstalls the application at its next sync, **without any linking**.
+`auto_approve: false` then no longer has any effect.
 
-Le service en tire trois règles :
+The service draws three rules from this:
 
-1. **Lecture juste avant l'écriture.** Le publisher relit la liste complète des versions de l'application
-   juste avant le `PUT`, plutôt que de reprendre celle du plan, que la vérification des APK a pu rendre
-   obsolète. Une version portant exactement le nom de la candidate bloque la publication, **quel que soit
-   `auto_approve`** : aucun appel d'écriture, issue `blocked`, événement `WARNING`
-   `publish.rewrite_blocked` qui nomme la version existante. `sync --dry-run` signale déjà le conflit
-   (champ `same_name_version_id` du plan).
-2. **Détection a posteriori.** Si le `PUT` renvoie un identifiant qui figurait dans la liste relue, la
-   publication est rapportée comme une réécriture en place (`rewritten`, événement `WARNING`
-   `publish.rewritten`), jamais comme une création ni comme une bascule de `latestVersion`.
-   `last_created_version_code` est tout de même enregistré : l'écriture a eu lieu, et l'omettre la ferait
-   répéter à chaque exécution.
-3. **Ni `blocked` ni `rewritten` ne sont des erreurs.** Comme une approbation en attente, ce sont des
-   décisions humaines en suspens : le code de sortie n'en tient pas compte, mais le résumé de `sync` et la
-   ligne `sync.finished` du journal portent `publications_blocked` et `versions_rewritten`, ce qui les rend
-   détectables sous timer. `fhm report`, qui ne lit que l'état local, ne les restitue pas.
+1. **Read right before writing.** The publisher reads the full version list of the application again right
+   before the `PUT`, rather than reusing the plan's, which the APK verification may have made stale. A version
+   carrying exactly the candidate's name blocks the publication, **whatever `auto_approve` says**: no write
+   call, a `blocked` outcome, a `WARNING` event `publish.rewrite_blocked` naming the existing version.
+   `sync --dry-run` already flags the conflict (the plan's `same_name_version_id` field).
+2. **After-the-fact detection.** If the `PUT` returns an id that was in the list just read, the publication is
+   reported as an in-place rewrite (`rewritten`, `WARNING` event `publish.rewritten`), never as a creation nor
+   as a `latestVersion` switch. `last_created_version_code` is recorded all the same: the write happened, and
+   leaving it out would have it repeated on every run.
+3. **Neither `blocked` nor `rewritten` is an error.** Like a pending approval, they are pending human
+   decisions: the exit code ignores them, but the `sync` summary and the `sync.finished` log line carry
+   `publications_blocked` and `versions_rewritten`, which makes them detectable under a timer. `fhm report`,
+   which only reads the local state, does not show them.
 
-Bloquer aussi avec `auto_approve: true` est délibéré :
+Blocking with `auto_approve: true` as well is deliberate:
 
-- la réécriture efface l'ancien build sans retour arrière possible, et Headwind ne peut pas tenir deux
-  versions du même nom ;
-- appliquée à une version ancienne, elle change ce qu'installent des configurations volontairement laissées
-  sur cette version, sans que `latestVersion` bouge.
+- the rewrite erases the old build with no way back, and Headwind cannot hold two versions with the same
+  name;
+- applied to an old version, it changes what configurations deliberately left on that version install, without
+  `latestVersion` moving.
 
-Une troisième raison a motivé ce choix et n'a plus cours : le rattachement renvoyait alors toutes les lignes
-de la version, y compris celles des configurations qui n'installaient pas l'application, et le serveur les
-insérait sans filtre. Il n'émet désormais que les configurations où l'application est installée (§12.2,
-décision 2).
+A third reason motivated this choice and no longer applies: linking then sent back every row of the version,
+including those of the configurations that did not install the application, and the server inserted them
+unfiltered. It now only sends the configurations where the application is installed (§12.2, decision 2).
 
-Le coût est assumé : un rebuild publié par F-Droid sous le même `versionName` avec un `versionCode`
-supérieur n'est jamais livré automatiquement. Le rattachement étant corrigé, assouplir la règle pour
-`auto_approve: true` peut désormais se discuter lorsque l'homonyme est la `latestVersion` : seule resterait
-alors la perte de l'ancien build.
+The cost is accepted: a rebuild published by F-Droid under the same `versionName` with a higher `versionCode`
+is never delivered automatically. With linking fixed, relaxing the rule for `auto_approve: true` is now open
+for discussion when the same-name version is the `latestVersion`: only the loss of the old build would then
+remain.
 
-Le conflit se lève dans Headwind, par un opérateur : il accepte la réécriture en modifiant lui-même la
-version existante, ou libère le nom en la renommant ou en la supprimant, après quoi le service crée la
-version normalement.
+The conflict is resolved in Headwind, by an operator: they accept the rewrite by editing the existing version
+themselves, or free the name by renaming or deleting it, after which the service creates the version normally.
 
-Limite résiduelle : une version homonyme apparue entre la relecture et le `PUT` échappe aux deux contrôles,
-son identifiant étant inconnu du service. La fenêtre se limite à la lecture des configurations qui les
-sépare.
+Residual limit: a same-name version appearing between the re-read and the `PUT` escapes both checks, since its
+id is unknown to the service. The window is limited to the configurations read that separates them.
 
-### Corps de `POST /rest/private/applications/version/configurations`
+### Body of `POST /rest/private/applications/version/configurations`
 
 ```json
 {
@@ -365,155 +357,154 @@ sépare.
 }
 ```
 
-Chaque entrée émise est celle retournée par le `GET` correspondant, **réémise telle quelle**, seuls `action`
-et `notify` étant positionnés par le service ; toutes ne sont pas émises (§12.2). Les entrées qui reviennent
-avec un `id` non nul (liens existants de cette version) sont renvoyées avec cet `id` : l'`INSERT` du serveur
-ne comporte pas la colonne `id`, qui est donc simplement ignorée.
+Each entry sent is the one returned by the corresponding `GET`, **sent back as is**, only `action` and `notify`
+being set by the service; not all of them are sent (§12.2). The entries that come back with a non-null `id`
+(existing links of this version) are sent back with that `id`: the server's `INSERT` has no `id` column, so it
+is simply ignored.
 
-Quatre pièges :
+Four pitfalls:
 
-- `versionText` est déclaré `int` côté serveur et reçoit en réalité l'identifiant numérique de la version
-  (`applicationVersions.id AS versionText` dans la requête). Y placer une chaîne comme `"1.4.2"` provoque une
-  erreur de désérialisation.
-- L'appel est **remplaçant pour la version ciblée uniquement** : il purge les liens de `applicationVersionId`
-  puis réinsère ceux transmis. Une configuration omise conserve ses liens vers les autres versions, car
-  `uninstallOtherVersions` ne s'exécute que pour les configurations transmises avec `action = 1` : l'omission
-  la laisse simplement sur l'ancienne version. En revanche, un lien existant de la version ciblée disparaît
-  s'il est omis — d'où la réémission systématique de ceux qui portent `action = 2`.
-- Corollaire : pour qu'une configuration bascule, elle **doit** figurer dans l'appel. Toutes les
-  configurations cibles sont donc envoyées en une seule requête.
-- `insertApplicationVersionConfigurations` insère **chaque** entrée reçue, sans filtre : une entrée à
-  `action = 0` crée un lien « ne pas installer » dans une configuration qui n'installait pas l'application.
-  Le panneau n'émet jamais de telles entrées, le service non plus.
+- `versionText` is declared `int` server-side and actually receives the numeric id of the version
+  (`applicationVersions.id AS versionText` in the query). Putting a string such as `"1.4.2"` there causes a
+  deserialization error.
+- The call **replaces the links of the target version only**: it purges the links of `applicationVersionId`,
+  then reinserts the ones sent. An omitted configuration keeps its links to the other versions, since
+  `uninstallOtherVersions` only runs for the configurations sent with `action = 1`: the omission simply leaves
+  it on the old version. However, an existing link of the target version disappears if it is omitted — hence
+  the systematic resending of those carrying `action = 2`.
+- Corollary: for a configuration to switch, it **must** be in the call. All the target configurations are
+  therefore sent in a single request.
+- `insertApplicationVersionConfigurations` inserts **every** entry it receives, unfiltered: an entry with
+  `action = 0` creates a "do not install" link in a configuration that did not install the application. The
+  panel never sends such entries, and neither does the service.
 
-### Authentification
+### Authentication
 
-Le service se connecte par **identifiant et mot de passe** sur `POST /rest/public/jwt/login`, et présente le
-JWT obtenu en `Authorization: Bearer` pour tous les appels suivants.
+The service logs in with a **login and a password** on `POST /rest/public/jwt/login`, and presents the JWT it
+obtains as `Authorization: Bearer` on every subsequent call.
 
 ```json
-{"login": "fdroid-mirror", "password": "<MD5 hexadécimal en MAJUSCULES>"}
+{"login": "fdroid-mirror", "password": "<UPPERCASE hexadecimal MD5>"}
 ```
 
-Le serveur répond `{"id_token": "..."}`, et répète le jeton dans un en-tête `Authorization` de réponse.
-Le compte n'a pas besoin de s'être connecté au panneau au préalable : si son `authToken` est vide, cette
-première connexion le génère via `UPDATE users SET password = <valeur déjà stockée>, authToken = ...`,
-sans donc toucher au mot de passe.
+The server answers `{"id_token": "..."}`, and repeats the token in an `Authorization` response header. The
+account does not need to have signed in to the panel beforehand: if its `authToken` is empty, this first login
+generates it through `UPDATE users SET password = <value already stored>, authToken = ...`, thus without
+touching the password.
 
-Trois propriétés de ce point d'entrée conditionnent l'implémentation :
+Three properties of this endpoint shape the implementation:
 
-- **Le champ `password` porte une empreinte MD5, pas le mot de passe.** `PasswordUtil.passwordMatch` compare
-  `SHA1(valeur_reçue + sel)` au mot de passe stocké, et `getHashFromRaw` alimente ce calcul avec
-  `MD5(mot_de_passe)`. La casse compte : `CryptoUtil.getHexString` produit des majuscules, donc une empreinte
-  minuscule donne un SHA1 différent et un `401`.
-- **Le jeton vaut 24 h** (`jwt.validity`, valeur par défaut `86400`), là où une exécution dure quelques
-  minutes : une seule authentification par exécution suffit, sans renouvellement.
-- **Un échec de connexion bloque le compte pendant une seconde** (`lastLoginFail`), et chaque échec est déjà
-  ralenti d'un `sleep` d'une seconde côté serveur. Un nouvel essai immédiat après un `401` échouerait donc
-  même avec les bons identifiants : le service ne réessaie pas.
+- **The `password` field carries an MD5 digest, not the password.** `PasswordUtil.passwordMatch` compares
+  `SHA1(received_value + salt)` with the stored password, and `getHashFromRaw` feeds that computation with
+  `MD5(password)`. Case matters: `CryptoUtil.getHexString` produces uppercase, so a lowercase digest gives a
+  different SHA1, hence a `401`.
+- **The token lasts 24 h** (`jwt.validity`, default value `86400`), whereas a run lasts a few minutes: a single
+  authentication per run is enough, with no renewal.
+- **A failed login locks the account for one second** (`lastLoginFail`), and each failure is already slowed
+  down by a one-second `sleep` server-side. An immediate retry after a `401` would therefore fail even with the
+  right credentials: the service does not retry.
 
 > [!WARNING]
-> L'`authToken` de la table `users` **n'est pas** un identifiant de connexion. `AuthFilter` exige une session
-> HTTP sur `/rest/private/*` et ne le lit que pour invalider les sessions périmées ; le présenter en `Bearer`
-> répond `HTTP 403`. Une conception antérieure reposait sur ce jeton — l'erreur n'est apparue qu'au premier
-> appel contre une instance réelle.
+> The `authToken` of the `users` table **is not** a login credential. `AuthFilter` requires an HTTP session on
+> `/rest/private/*` and only reads it to invalidate stale sessions; presenting it as a `Bearer` answers
+> `HTTP 403`. An earlier design relied on this token — the error only showed up on the first call against a
+> real instance.
 
 ---
 
-## 6. API F-Droid utilisée
+## 6. F-Droid API used
 
-| Usage | Endpoint |
+| Use | Endpoint |
 | --- | --- |
-| Détection de changement | `GET {repo}/entry.json` avec `If-None-Match` / `If-Modified-Since` |
-| Métadonnées complètes | `GET {repo}/index-v2.json` |
-| Mises à jour incrémentales | `GET {repo}/diff/{timestamp}.json` |
-| Téléchargement | `GET {repo}/{apkName}` |
+| Change detection | `GET {repo}/entry.json` with `If-None-Match` / `If-Modified-Since` |
+| Full metadata | `GET {repo}/index-v2.json` |
+| Incremental updates | `GET {repo}/diff/{timestamp}.json` |
+| Download | `GET {repo}/{apkName}` |
 
-L'endpoint `GET https://f-droid.org/api/v1/packages/{pkg}` donne le `suggestedVersionCode` à faible coût mais
-**ne fournit ni le signataire, ni `nativecode`, ni le hash**. Comme la résolution de version ne peut de toute
-façon pas s'appuyer sur le `suggestedVersionCode` seul (§7.2), cet endpoint n'est pas utilisé : l'index est
-l'unique source.
+The `GET https://f-droid.org/api/v1/packages/{pkg}` endpoint gives the `suggestedVersionCode` cheaply but
+**provides neither the signer, nor `nativecode`, nor the hash**. Since version resolution cannot rely on the
+`suggestedVersionCode` alone anyway (§7.2), this endpoint is not used: the index is the only source.
 
-### Volumétrie
+### Volumes
 
-Mesures relevées le 2026-09-16 sur le dépôt officiel :
+Measurements taken on 2026-09-16 on the official repository:
 
-| Ressource | Taille | Remarque |
+| Resource | Size | Note |
 | --- | --- | --- |
-| `entry.json` | 1,9 ko | `ETag` et `Last-Modified` présents |
-| `index-v2.json` | 19 Mo en gzip, 60 Mo décompressé | 4 385 paquets |
-| `diff/{timestamp}.json` | 0,5 à 5,5 Mo | 10 diffs proposés, `maxAge` de 14 jours |
+| `entry.json` | 1.9 kB | `ETag` and `Last-Modified` present |
+| `index-v2.json` | 19 MB gzipped, 60 MB uncompressed | 4,385 packages |
+| `diff/{timestamp}.json` | 0.5 to 5.5 MB | 10 diffs offered, `maxAge` of 14 days |
 
-Télécharger l'index complet chaque jour pour une poignée de paquets est disproportionné. La stratégie est
-donc en trois temps : `entry.json` conditionnel, puis diff incrémental si le dernier index appliqué figure
-parmi les diffs proposés, et repli sur l'index complet sinon.
+Downloading the full index every day for a handful of packages is disproportionate. The strategy therefore has
+three stages: a conditional `entry.json`, then an incremental diff if the last applied index is among the diffs
+offered, and a fallback to the full index otherwise.
 
-### Application d'un diff
+### Applying a diff
 
-Un diff **n'est pas une fusion de dictionnaires** : une valeur `null` signifie « supprimer cette clé ». Sur un
-diff observé, 158 versions étaient ainsi retirées. Une fusion naïve laisserait des versions obsolètes dans
-l'index local et pourrait ressusciter un APK retiré du dépôt comme candidat à la publication. La fusion doit
-être récursive et traiter `null` comme une suppression.
+A diff **is not a dictionary merge**: a `null` value means "delete this key". In one observed diff, 158
+versions were removed this way. A naive merge would leave obsolete versions in the local index and could bring
+an APK removed from the repository back as a publication candidate. The merge must be recursive and treat
+`null` as a deletion.
 
-### Vérification d'intégrité
+### Integrity check
 
-`entry.json` fournit le `sha256` attendu de l'index comme de chaque diff. Ces empreintes sont vérifiées avant
-tout parsing.
+`entry.json` provides the expected `sha256` of the index as well as of each diff. These hashes are checked
+before any parsing.
 
-Le service doit rester agnostique du dépôt : `repo_url` est une donnée de configuration, afin de supporter
-F-Droid officiel, IzzyOnDroid ou un dépôt interne.
+The service must remain repository-agnostic: `repo_url` is configuration data, so as to support the official
+F-Droid repository, IzzyOnDroid or an internal repository.
 
-### Empreinte du dépôt — point ouvert
+### Repository fingerprint — open point
 
-L'empreinte de la clé de signature du dépôt est déclarée en configuration (`repo.fingerprint`) mais **n'est
-pas encore vérifiée**. Le service consomme `entry.json`, qui n'est pas signé ; c'est `entry.jar` qui porte la
-signature JAR et la signature GPG. La contrôler suppose donc de valider un manifeste JAR et une structure
-PKCS#7, travail disproportionné pour les itérations 2 et 3 et traité à part.
+The fingerprint of the repository's signing key is declared in the configuration (`repo.fingerprint`) but **is
+not verified yet**. The service consumes `entry.json`, which is not signed; `entry.jar` is what carries the JAR
+signature and the GPG signature. Checking it therefore means validating a JAR manifest and a PKCS#7 structure,
+work out of proportion for iterations 2 and 3 and handled separately.
 
-En l'état, la protection repose sur HTTPS et sur la chaîne d'empreintes : `entry.json` fournit le sha256 de
-l'index, l'index fournit celui de chaque APK. Un attaquant capable de falsifier l'index pourrait rediriger le
-service vers des APK arbitraires ; c'est la limite connue, énoncée dans le README.
+As things stand, protection relies on HTTPS and on the hash chain: `entry.json` provides the sha256 of the
+index, and the index provides that of each APK. An attacker able to forge the index could redirect the service
+to arbitrary APKs; this is the known limit, stated in the README.
 
-Le certificat des APK n'est volontairement pas ré-extrait. Si les octets téléchargés correspondent à
-l'empreinte de l'index, l'affirmation de signataire portée par l'index vaut pour ces octets exacts. Re-dériver
-le certificat n'apporterait de garantie que contre un index falsifié — lequel déclarerait simplement le
-signataire de l'APK falsifié — et ne couvrirait que les APK signés en v1, à l'exclusion des paquets récents
-signés uniquement en v2/v3.
+The APK certificate is deliberately not re-extracted. If the downloaded bytes match the hash in the index, the
+signer assertion carried by the index holds for those exact bytes. Re-deriving the certificate would only guard
+against a forged index — which would simply declare the signer of the forged APK — and would only cover APKs
+signed with v1, excluding the recent packages signed with v2/v3 only.
 
 ---
 
-## 7. Points de vigilance
+## 7. Pitfalls
 
-### 7.1 Signature : contrainte de correction, pas de confort
+### 7.1 Signature: a correctness constraint, not a convenience
 
-Android refuse toute mise à jour dont le certificat de signature diffère de celui de l'application installée
-(`INSTALL_FAILED_UPDATE_INCOMPATIBLE`). Or F-Droid signe avec sa propre clé, et **le signataire d'un paquet
-peut changer d'une version à l'autre** (passage en builds reproductibles signés par l'auteur amont, par exemple).
+Android rejects any update whose signing certificate differs from that of the installed application
+(`INSTALL_FAILED_UPDATE_INCOMPATIBLE`). Yet F-Droid signs with its own key, and **the signer of a package can
+change from one version to the next** (a switch to reproducible builds signed by the upstream author, for
+example).
 
-Le risque est mesurable : sur les 4 385 paquets du dépôt officiel, **17 présentent au moins deux signataires
-distincts selon les versions**. C'est rare, mais chacun de ces cas produirait un échec d'installation sur
-l'ensemble des appareils concernés.
+The risk is measurable: of the 4,385 packages in the official repository, **17 show at least two distinct
+signers across their versions**. It is rare, but each of these cases would cause an install failure on all the
+devices concerned.
 
-Règles retenues :
+Rules adopted:
 
-- Le champ est `manifest.signer.sha256`, et c'est **un tableau**. Sur les 4 385 paquets relevés, aucune
-  version n'en déclare plusieurs, et 3 versions n'en déclarent aucun. Le service exige donc exactement une
-  entrée : toute autre cardinalité est refusée, plutôt qu'arbitrée silencieusement.
-- Le signataire est épinglé au moment où le paquet est mis sous suivi. `metadata.preferredSigner`, présent
-  sur 4 384 des 4 385 paquets, sert de valeur de référence à l'épinglage.
-- À chaque exécution, si le signataire de la version candidate diffère : **refus, alerte, aucune écriture
-  dans Headwind**. Le déblocage est une action humaine explicite (réinstallation coordonnée).
+- The field is `manifest.signer.sha256`, and it is **an array**. Across the 4,385 packages surveyed, no version
+  declares several, and 3 versions declare none. The service therefore requires exactly one entry: any other
+  cardinality is rejected, rather than silently arbitrated.
+- The signer is pinned when the package is put under tracking. `metadata.preferredSigner`, present on 4,384 of
+  the 4,385 packages, serves as the reference value for pinning.
+- On every run, if the signer of the candidate version differs: **rejection, alert, no write to Headwind**.
+  Unblocking is an explicit human action (coordinated reinstallation).
 
-C'est ce qui justifie le suivi en opt-in : appliquer ce service à une application installée depuis une autre
-source garantirait un échec d'installation silencieux sur tout le parc.
+This is what justifies opt-in tracking: applying this service to an application installed from another source
+would guarantee a silent install failure across the whole fleet.
 
-### 7.2 Comparaison sur `versionCode`, après regroupement par ABI
+### 7.2 Comparison on `versionCode`, after grouping by ABI
 
-La comparaison se fait sur `manifest.versionCode` (entier), jamais sur la chaîne de version.
+The comparison is made on `manifest.versionCode` (an integer), never on the version string.
 
-Le `suggestedVersionCode` de F-Droid **n'est pas utilisable tel quel** : il désigne la version préférée pour
-un client qui filtre déjà par l'ABI de son appareil. Pour un paquet publiant un APK par architecture, il
-pointe donc simplement vers l'ABI ayant le `versionCode` le plus élevé — souvent `x86_64`. VLC l'illustre :
+F-Droid's `suggestedVersionCode` **cannot be used as is**: it designates the preferred version for a client that
+already filters by the ABI of its device. For a package publishing one APK per architecture, it therefore simply
+points to the ABI with the highest `versionCode` — often `x86_64`. VLC illustrates it:
 
 | `versionCode` | `versionName` | `nativecode` |
 | --- | --- | --- |
@@ -522,143 +513,143 @@ pointe donc simplement vers l'ABI ayant le `versionCode` le plus élevé — sou
 | 13070106 | 3.7.1 | `arm64-v8a` |
 | 13070105 | 3.7.1 | `armeabi-v7a` |
 
-Retenir le plus haut `versionCode` publierait l'APK x86_64 sur un parc ARM. La règle est donc : **regrouper
-par ABI, puis prendre le `versionCode` le plus élevé au sein de chaque ABI ciblée**.
+Picking the highest `versionCode` would publish the x86_64 APK on an ARM fleet. The rule is therefore: **group
+by ABI, then take the highest `versionCode` within each targeted ABI**.
 
-L'ordre des clés de l'objet `versions` n'est pas non plus une source fiable : il correspond au `versionCode`
-décroissant dans 4 382 cas sur 4 385, mais diverge dans 3. Le tri est donc explicite.
+The key order of the `versions` object is not a reliable source either: it matches descending `versionCode` in
+4,382 cases out of 4,385, but diverges in 3. The sort is therefore explicit.
 
-### 7.3 APK par ABI
+### 7.3 Per-ABI APKs
 
-Un paquet peut publier plusieurs APK par architecture, avec des `versionCode` distincts. Le champ
-`manifest.nativecode` de chaque version indique les ABI couvertes. Répartition mesurée sur les 4 385 paquets,
-d'après la version au `versionCode` le plus élevé :
+A package may publish several APKs per architecture, with distinct `versionCode` values. The
+`manifest.nativecode` field of each version gives the ABIs covered. Distribution measured over the 4,385
+packages, based on the version with the highest `versionCode`:
 
-| Forme | Paquets | Traitement |
+| Shape | Packages | Handling |
 | --- | --- | --- |
-| Pas de `nativecode` (pur Java) | 1 984 | `split = false`, un seul champ `url` |
-| `nativecode` multi-ABI (universel natif) | 1 882 | `split = false`, un seul champ `url` |
-| `nativecode` mono-ABI (publication par ABI) | 519 | `split = true`, `urlArmeabi` + `urlArm64` |
+| No `nativecode` (pure Java) | 1,984 | `split = false`, a single `url` field |
+| Multi-ABI `nativecode` (native universal) | 1,882 | `split = false`, a single `url` field |
+| Single-ABI `nativecode` (per-ABI publication) | 519 | `split = true`, `urlArmeabi` + `urlArm64` |
 
-Le cas splitté représente donc près de 12 % du dépôt : il doit être traité, pas reporté.
+The split case therefore represents nearly 12% of the repository: it must be handled, not postponed.
 
-Correspondance des ABI, Headwind ne connaissant que deux architectures
-(`Application.ARCH_ARMEABI = "armeabi"` et `Application.ARCH_ARM64 = "arm64"`) :
+ABI mapping, since Headwind only knows two architectures (`Application.ARCH_ARMEABI = "armeabi"` and
+`Application.ARCH_ARM64 = "arm64"`):
 
-| ABI F-Droid | Champ Headwind |
+| F-Droid ABI | Headwind field |
 | --- | --- |
 | `arm64-v8a` | `urlArm64` |
 | `armeabi-v7a`, `armeabi` | `urlArmeabi` |
-| `x86`, `x86_64`, `mips`, `riscv64`… | non représentables — ignorées |
+| `x86`, `x86_64`, `mips`, `riscv64`… | not representable — ignored |
 
-Un paquet splitté ne publiant aucune ABI ARM n'est pas déployable sur le parc : il est refusé avec une alerte
-plutôt que publié partiellement. Une erreur ici ne se voit pas côté service : elle se manifeste par un échec
-d'installation sur l'appareil.
+A split package publishing no ARM ABI cannot be deployed on the fleet: it is rejected with an alert rather than
+partially published. An error here goes unnoticed on the service side: it shows up as an install failure on the
+device.
 
-### 7.4 Classement des versions côté Headwind
+### 7.4 Version ranking on the Headwind side
 
-`recalculateLatestVersion` s'appuie sur la fonction PostgreSQL `mdm_app_version_comparison_index`, qui découpe
-la chaîne de version sur `.`, supprime tout caractère non numérique de chaque segment et complète à 10
-chiffres. Le suffixe d'une préversion est donc absorbé dans le numéro :
+`recalculateLatestVersion` relies on the PostgreSQL function `mdm_app_version_comparison_index`, which splits the
+version string on `.`, removes every non-digit character from each segment and pads it to 10 digits. The suffix
+of a pre-release is therefore absorbed into the number:
 
-| Version | Index produit (segments) | Effet |
+| Version | Resulting index (segments) | Effect |
 | --- | --- | --- |
-| `1.2.3` | `…0000000003` | référence |
-| `1.2.3-rc1` | `…0000000031` | considérée **plus récente** que `1.2.3` |
+| `1.2.3` | `…0000000003` | reference |
+| `1.2.3-rc1` | `…0000000031` | considered **newer** than `1.2.3` |
 
-Second effet, plus fréquent en pratique : les index étant des **concaténations de segments de largeur fixe**,
-deux versions n'ayant pas le même nombre de segments se comparent par préfixe. `2.1.0` produit 30 caractères,
-`2.2` en produit 20 ; la comparaison reste correcte ici, mais un paquet qui supprime un segment entre deux
-publications (par exemple `2.1.0` puis `2.2.0` puis `2.3`) peut produire un classement contre-intuitif dès que
-les segments communs sont égaux. C'est un déclencheur indépendant du cas des préversions, et une raison
-supplémentaire de ne pas se reposer sur le classement serveur.
+A second effect, more frequent in practice: since the indexes are **concatenations of fixed-width segments**,
+two versions that do not have the same number of segments are compared by prefix. `2.1.0` produces 30
+characters, `2.2` produces 20; the comparison remains correct here, but a package that drops a segment between
+two publications (for example `2.1.0`, then `2.2.0`, then `2.3`) can produce a counter-intuitive ranking as soon
+as the common segments are equal. This trigger is independent of the pre-release case, and one more reason not
+to rely on the server's ranking.
 
-Deux mitigations, complémentaires :
+Two complementary mitigations:
 
-- Ne jamais retenir une préversion comme candidate (le `suggestedVersionCode` de F-Droid l'évite déjà dans
-  la grande majorité des cas).
-- Le contrôle de cohérence de `latestVersion` décrit en §4, qui bascule sur le rattachement explicite dès que
-  le serveur n'a pas retenu la version créée.
+- Never select a pre-release as a candidate (F-Droid's `suggestedVersionCode` already avoids it in the vast
+  majority of cases).
+- The `latestVersion` consistency check described in §4, which falls back to explicit linking as soon as the
+  server has not selected the created version.
 
-### 7.5 Latence de déploiement réelle
+### 7.5 Actual deployment latency
 
-`notify: true` déclenche `pushService.notifyDevicesOnUpdate(configurationId)`. Deux réserves à énoncer
-clairement plutôt que de promettre une mise à jour immédiate :
+`notify: true` triggers `pushService.notifyDevicesOnUpdate(configurationId)`. Two caveats to state clearly
+rather than promising an immediate update:
 
-- Le push n'est effectif que si le service de notification est configuré sur l'instance Headwind ; sinon les
-  appareils prennent la mise à jour à leur prochaine synchronisation périodique.
-- L'installation effective dépend des droits de l'agent sur l'appareil (Device Owner pour l'installation
-  silencieuse) et de la fenêtre de mise à jour configurée.
+- The push only takes effect if the notification service is configured on the Headwind instance; otherwise the
+  devices pick up the update at their next periodic sync.
+- The actual installation depends on the rights of the agent on the device (Device Owner for silent
+  installation) and on the configured update window.
 
-### 7.6 Validation d'approbation
+### 7.6 Approval
 
-Pousser du logiciel sur un parc géré est une décision qui se gouverne. Chaque paquet suivi porte un
-indicateur `auto_approve` :
+Pushing software to a managed fleet is a decision that must be governed. Each tracked package carries an
+`auto_approve` flag:
 
-| `auto_approve` | Comportement |
+| `auto_approve` | Behaviour |
 | --- | --- |
-| `true` | La version est créée **et** rattachée aux configurations, avec notification |
-| `false` | La version est créée dans Headwind et signalée dans le rapport ; le rattachement reste à faire par un opérateur |
+| `true` | The version is created **and** linked to the configurations, with notification |
+| `false` | The version is created in Headwind and flagged in the report; linking is left to an operator |
 
-Le second mode a un coût d'implémentation quasi nul et évite que le service soit désactivé au premier doute.
+The second mode costs almost nothing to implement, and keeps the service from being switched off at the first
+doubt.
 
-Dans les deux modes, une candidate dont le nom est déjà porté par une version Headwind n'est pas publiée :
-créer la version la réécrirait en place et la déploierait sans rattachement (§5, « Déduplication par nom de
-version »).
+In both modes, a candidate whose name is already taken by a Headwind version is not published: creating the
+version would rewrite it in place and deploy it without linking (§5, "Deduplication by version name").
 
-#### Conséquence sur le suivi d'état
+#### Consequence for state tracking
 
-Ce mode crée un état intermédiaire — « version présente dans Headwind, non rattachée » — qu'un unique
-compteur de progression ne sait pas représenter. Avec une seule colonne, les deux issues sont mauvaises :
+This mode creates an intermediate state — "version present in Headwind, not linked" — that a single progress
+counter cannot represent. With a single column, both outcomes are bad:
 
-| Si l'on marque la progression après la création | Si on ne la marque pas |
+| If progress is recorded after the creation | If it is not |
 | --- | --- |
-| L'exécution suivante ne voit plus rien à faire : l'approbation en attente est silencieusement oubliée | L'exécution suivante retente la création, tombe sur `getDuplicateAppVersion` — qui **met à jour** la version existante au lieu d'échouer — et ré-alerte tous les jours |
+| The next run sees nothing left to do: the pending approval is silently forgotten | The next run retries the creation, runs into `getDuplicateAppVersion` — which **updates** the existing version instead of failing — and alerts again every day |
 
-D'où deux colonnes distinctes en §9 :
+Hence two distinct columns in §9:
 
-- `last_created_version_code` — la version existe dans Headwind ;
-- `last_pushed_version_code` — la version est rattachée aux configurations.
+- `last_created_version_code` — the version exists in Headwind;
+- `last_pushed_version_code` — the version is linked to the configurations.
 
-Une version en attente d'approbation est exactement celle où `last_created_version_code >
-last_pushed_version_code`. L'exécution suivante saute alors la création et se contente de rappeler
-l'approbation en attente dans le rapport, sans écriture.
+A version awaiting approval is exactly one where `last_created_version_code > last_pushed_version_code`. The
+next run then skips the creation and merely reminds of the pending approval in the report, without any write.
 
-La réécriture évoquée dans le tableau ne se limite pas aux versions créées par le service : toute version
-homonyme, saisie à la main par exemple, est réécrite de la même façon, liens aux configurations compris.
-C'est ce qui justifie le contrôle d'homonymie décrit en §5.
+The rewrite mentioned in the table is not limited to the versions created by the service: any same-name
+version, entered by hand for example, is rewritten the same way, configuration links included. This is what
+justifies the same-name check described in §5.
 
 ---
 
-## 8. Distribution des APK : URL directe
+## 8. APK distribution: direct URL
 
-**Décision : Headwind n'hébergera jamais les APK.** Les versions publiées portent l'URL du dépôt F-Droid, et
-les appareils téléchargent le binaire eux-mêmes. L'option `mirror` qui exposait les deux modes a été retirée
-de la configuration et de l'état local (migration `002_drop_mirror.sql`), et l'itération 5 est abandonnée.
+**Decision: Headwind will never host the APKs.** The published versions carry the URL of the F-Droid
+repository, and the devices download the binary themselves. The `mirror` option that exposed both modes has been
+removed from the configuration and from the local state (migration `002_drop_mirror.sql`), and iteration 5 is
+abandoned.
 
-Cette décision ferme un arbitrage qui était ouvert dans la conception initiale :
+This decision closes a trade-off that was open in the initial design:
 
-| Critère | Conséquence du choix |
+| Criterion | Consequence of the choice |
 | --- | --- |
-| Accès réseau des appareils | **`f-droid.org` doit être joignable depuis chaque appareil** — contrainte dure |
-| Disponibilité | Dépend de celle du dépôt F-Droid |
-| Reproductibilité | Les anciennes versions migrent vers l'archive du dépôt, dont l'URL diffère |
-| Coût disque côté Headwind | Nul, et son quota n'est jamais sollicité |
-| Complexité | Aucun envoi de fichier, aucune politique de rétention à tenir |
+| Network access from the devices | **`f-droid.org` must be reachable from every device** — a hard constraint |
+| Availability | Depends on that of the F-Droid repository |
+| Reproducibility | Old versions move to the repository's archive, whose URL differs |
+| Disk cost on the Headwind side | None, and its quota is never used |
+| Complexity | No file upload, no retention policy to maintain |
 
-Le service télécharge malgré tout les APK, mais seulement pour en vérifier l'empreinte avant publication
-(§6) : ces fichiers restent dans son cache local et ne sont jamais transmis à Headwind.
+The service still downloads the APKs, but only to verify their hash before publication (§6): these files stay
+in its local cache and are never sent to Headwind.
 
 ---
 
-## 9. État local
+## 9. Local state
 
-SQLite, un seul fichier, suffisant pour la volumétrie visée et sans dépendance d'infrastructure.
+SQLite, a single file, enough for the target volumes and with no infrastructure dependency.
 
 ```mermaid
 erDiagram
-    TRACKED_PACKAGE ||--o{ SYNC_EVENT : "génère"
-    SYNC_RUN ||--o{ SYNC_EVENT : "contient"
+    TRACKED_PACKAGE ||--o{ SYNC_EVENT : "generates"
+    SYNC_RUN ||--o{ SYNC_EVENT : "contains"
 
     TRACKED_PACKAGE {
         text pkg PK
@@ -696,23 +687,22 @@ erDiagram
     }
 ```
 
-Les trois colonnes réellement critiques :
+The three truly critical columns:
 
-| Colonne | Rôle |
+| Column | Role |
 | --- | --- |
-| `expected_signer` | Porte la garantie de correction décrite en §7.1 |
-| `last_created_version_code` | Version existant dans Headwind — évite de recréer une version déjà publiée |
-| `last_pushed_version_code` | Version rattachée aux configurations — assure l'idempotence du déploiement |
+| `expected_signer` | Carries the correctness guarantee described in §7.1 |
+| `last_created_version_code` | Version existing in Headwind — avoids recreating a version already published |
+| `last_pushed_version_code` | Version linked to the configurations — makes the deployment idempotent |
 
-L'écart entre les deux dernières est l'état « en attente d'approbation » (§7.6). Elles sont égales dans le cas
-nominal avec `auto_approve: true`.
+The gap between the last two is the "awaiting approval" state (§7.6). They are equal in the nominal case with
+`auto_approve: true`.
 
-`last_seen_version_code` est purement informatif : il enregistre la dernière version observée sur F-Droid,
-y compris celles refusées (signataire divergent, préversion), ce qui rend le rapport lisible sans avoir à
-relire l'index.
+`last_seen_version_code` is purely informative: it records the last version seen on F-Droid, including rejected
+ones (signer mismatch, pre-release), which keeps the report readable without having to read the index again.
 
-La liste des paquets suivis est alimentée par un fichier déclaratif versionné (`packages.yaml`), appliqué à la
-base au démarrage. Cela rend le suivi auditable et reproductible :
+The list of tracked packages comes from a versioned declarative file (`packages.yaml`), applied to the database
+at startup. This makes tracking auditable and reproducible:
 
 ```yaml
 repo:
@@ -731,46 +721,46 @@ packages:
 
 ---
 
-## 10. Pile technique et structure
+## 10. Technical stack and structure
 
-Python 3.12 + Poetry, conformément aux conventions en vigueur (`pylint`, `black`, annotations de type strictes).
+Python 3.12 + Poetry, in line with the conventions in force (`pylint`, `black`, strict type annotations).
 
-| Besoin | Choix |
+| Need | Choice |
 | --- | --- |
-| Client HTTP | `httpx` (timeouts explicites, envoi multipart, réutilisation de connexion) |
-| Validation des données | `pydantic` v2 — modèles pour l'index F-Droid et pour les entités Headwind |
-| Persistance | `sqlite3` de la bibliothèque standard, migrations SQL versionnées |
+| HTTP client | `httpx` (explicit timeouts, multipart upload, connection reuse) |
+| Data validation | `pydantic` v2 — models for the F-Droid index and for the Headwind entities |
+| Persistence | `sqlite3` from the standard library, versioned SQL migrations |
 | CLI | `typer` |
-| Journalisation | `structlog` en JSON |
-| Ordonnancement | `systemd` timer (ou `CronJob` Kubernetes) — pas d'ordonnanceur embarqué |
+| Logging | `structlog` as JSON |
+| Scheduling | `systemd` timer (or a Kubernetes `CronJob`) — no embedded scheduler |
 
 ```
 fdroid_headwind_mirror/
-├── cli.py                   # points d'entrée : sync, status, track, untrack
-├── config.py                # chargement et validation de la configuration
+├── cli.py                   # entry points: sync, status, track, untrack
+├── config.py                # configuration loading and validation
 ├── fdroid/
-│   ├── client.py            # entry.json, index-v2.json, téléchargement
-│   ├── models.py            # modèles pydantic de l'index
-│   └── resolver.py          # choix de la version candidate, résolution ABI
+│   ├── client.py            # entry.json, index-v2.json, download
+│   ├── models.py            # pydantic models of the index
+│   └── resolver.py          # candidate version choice, ABI resolution
 ├── headwind/
-│   ├── client.py            # client REST typé
-│   ├── models.py            # Application, ApplicationVersion, liens
-│   └── errors.py            # erreurs métier de l'API
+│   ├── client.py            # typed REST client
+│   ├── models.py            # Application, ApplicationVersion, links
+│   └── errors.py            # API business errors
 ├── domain/
-│   ├── planner.py           # diff : quel paquet doit être mis à jour
-│   ├── verifier.py          # sha256, signataire, cohérence ABI
-│   └── publisher.py         # orchestration de la publication d'une version
+│   ├── planner.py           # diff: which package must be updated
+│   ├── verifier.py          # sha256, signer, ABI consistency
+│   └── publisher.py         # orchestration of a version publication
 ├── state/
-│   ├── repository.py        # accès SQLite
+│   ├── repository.py        # SQLite access
 │   └── migrations/
 └── reporting/
-    └── report.py            # rapport d'exécution
+    └── report.py            # run report
 ```
 
-Les couches ne se connaissent que dans un sens : `cli` → `domain` → (`fdroid`, `headwind`, `state`). `domain`
-ne manipule que des modèles internes, ce qui permet de tester la logique de décision sans aucun appel réseau.
+The layers only know each other in one direction: `cli` → `domain` → (`fdroid`, `headwind`, `state`). `domain`
+only handles internal models, which makes it possible to test the decision logic without any network call.
 
-### Commandes
+### Commands
 
 ```bash
 poetry run fhm sync --dry-run
@@ -779,206 +769,204 @@ poetry run fhm status
 poetry run fhm track org.mozilla.fennec_fdroid --application-id 42
 ```
 
-`--dry-run` est la commande de vérification par défaut : elle effectue toutes les lectures et vérifications,
-et n'émet aucune écriture vers Headwind.
+`--dry-run` is the default verification command: it performs all the reads and checks, and issues no write to
+Headwind.
 
 ---
 
-## 11. Sécurité
+## 11. Security
 
-| Risque | Mitigation |
+| Risk | Mitigation |
 | --- | --- |
-| Index de dépôt compromis | HTTPS et chaîne d'empreintes — l'empreinte du dépôt reste **non vérifiée**, voir §6 |
-| Index altéré en transit | Vérification du sha256 de l'index et des diffs contre `entry.json` |
-| APK altéré en transit | Vérification du sha256 et de la taille pendant le téléchargement, avant tout envoi |
-| Cache local altéré | Empreinte recalculée à chaque réutilisation, retéléchargement si divergente |
-| Miroir défaillant ou hostile | Transfert plafonné par la taille annoncée dans l'index |
-| Mise à jour cross-signature | Épinglage du signataire par paquet (§7.1) |
-| Fuite du token Headwind | Secret injecté par variable d'environnement, jamais journalisé, utilisateur de service aux permissions minimales |
-| Déploiement non désiré | `auto_approve` à `false` par défaut, `--dry-run` |
-| Empreinte réseau | Appels sortants limités au dépôt configuré et à l'instance Headwind |
+| Compromised repository index | HTTPS and hash chain — the repository fingerprint remains **unverified**, see §6 |
+| Index tampered with in transit | sha256 check of the index and of the diffs against `entry.json` |
+| APK tampered with in transit | sha256 and size check during the download, before any upload |
+| Tampered local cache | Hash recomputed on every reuse, new download if it differs |
+| Faulty or hostile mirror | Transfer capped by the size announced in the index |
+| Cross-signature update | Signer pinning per package (§7.1) |
+| Headwind token leak | Secret injected through an environment variable, never logged, service user with minimal permissions |
+| Unwanted deployment | `auto_approve` set to `false` by default, `--dry-run` |
+| Network footprint | Outgoing calls limited to the configured repository and to the Headwind instance |
 
 ---
 
-## 12. Mise en œuvre par itérations
+## 12. Implementation by iterations
 
-| Itération | Périmètre | Critère de fin |
+| Iteration | Scope | Done when |
 | --- | --- | --- |
-| 1 ✅ | Client Headwind en lecture seule + état local + `status` | Le service liste les applications Headwind et les confronte à `packages.yaml` |
-| 2 ✅ | Client F-Droid + résolution de version + `sync --dry-run` | Le service dit ce qu'il mettrait à jour, sans rien écrire |
-| 3 ✅ | Vérifications (sha256, signataire, ABI) | Une divergence de signataire produit une alerte et bloque le paquet |
-| 4 ✅ | Publication d'une version (mode URL directe) | Une nouvelle version apparaît dans Headwind |
-| 5 ❌ | ~~Mode miroir (envoi de l'APK)~~ | Abandonnée : Headwind n'hébergera jamais les APK (§8) |
-| 6 ✅ | Rattachement aux configurations + notification | Un appareil de test reçoit la mise à jour |
-| 7 ✅ | Ordonnancement, rapport, supervision | Exécution quotidienne autonome avec rapport exploitable |
+| 1 ✅ | Read-only Headwind client + local state + `status` | The service lists the Headwind applications and matches them against `packages.yaml` |
+| 2 ✅ | F-Droid client + version resolution + `sync --dry-run` | The service says what it would update, without writing anything |
+| 3 ✅ | Verification (sha256, signer, ABI) | A signer mismatch produces an alert and blocks the package |
+| 4 ✅ | Publication of a version (direct URL mode) | A new version appears in Headwind |
+| 5 ❌ | ~~Mirror mode (APK upload)~~ | Abandoned: Headwind will never host the APKs (§8) |
+| 6 ✅ | Linking to the configurations + notification | A test device receives the update |
+| 7 ✅ | Scheduling, reporting, monitoring | Autonomous daily run with a usable report |
 
-Les itérations 1 à 3 n'écrivent rien dans Headwind : elles permettent de valider la lecture du parc et la
-résolution des versions sans aucun risque. L'itération 4 est le premier point où une validation sur une
-instance de recette est nécessaire.
+Iterations 1 to 3 write nothing to Headwind: they validate reading the fleet and resolving the versions without
+any risk. Iteration 4 is the first point where a validation on a staging instance is required.
 
-### 12.1 Ce que fait exactement l'itération 4
+### 12.1 What iteration 4 does exactly
 
-`fhm sync --apply` enchaîne, pour chaque paquet en `UPDATE_AVAILABLE` :
+`fhm sync --apply` chains, for each package in `UPDATE_AVAILABLE`:
 
 ```mermaid
 flowchart TD
-    A[Plan: UPDATE_AVAILABLE] --> B{APK vérifié ?}
-    B -- non --> S1[IGNORÉ, aucune écriture]
-    B -- oui --> C{versionCode déjà créé ?}
-    C -- oui --> S2[IGNORÉ, idempotence]
-    C -- non --> V[GET versions de l'application]
-    V -- échec --> S5[ÉCHEC, création annulée]
-    V -- succès --> N{nom déjà porté par une version ?}
-    N -- oui --> S6[BLOQUÉE, aucune écriture]
-    N -- non --> D[GET configurations de l'application]
-    D -- échec --> S3[ÉCHEC, création annulée]
-    D -- succès --> E[PUT /private/applications/versions]
-    E -- échec --> S4[ÉCHEC]
-    E -- succès --> F[set_version_progress last_created_version_code]
-    F --> R{identifiant déjà connu ?}
-    R -- oui --> S7[RÉÉCRITE EN PLACE]
-    R -- non --> G[GET application, comparaison latestVersion]
-    G --> H[CRÉÉE]
+    A[Plan: UPDATE_AVAILABLE] --> B{APK verified?}
+    B -- no --> S1[SKIPPED, no write]
+    B -- yes --> C{versionCode already created?}
+    C -- yes --> S2[SKIPPED, idempotence]
+    C -- no --> V[GET the application versions]
+    V -- failure --> S5[FAILED, creation cancelled]
+    V -- success --> N{name already taken by a version?}
+    N -- yes --> S6[BLOCKED, no write]
+    N -- no --> D[GET the application configurations]
+    D -- failure --> S3[FAILED, creation cancelled]
+    D -- success --> E[PUT /private/applications/versions]
+    E -- failure --> S4[FAILED]
+    E -- success --> F[set_version_progress last_created_version_code]
+    F --> R{id already known?}
+    R -- yes --> S7[REWRITTEN IN PLACE]
+    R -- no --> G[GET application, latestVersion comparison]
+    G --> H[CREATED]
 ```
 
-Cinq décisions structurantes :
+Five key decisions:
 
-1. **`--apply` impose la vérification des APK.** Le mode URL directe publie un pointeur que les appareils
-   téléchargeront eux-mêmes ; publier sans avoir calculé l'empreinte des octets servis reviendrait à
-   affirmer une intégrité jamais constatée. Un artefact non vérifié ne produit aucune écriture.
-2. **Les configurations sont lues avant la création** (§4). Une configuration portant `autoUpdate` bascule
-   sur la nouvelle version dès l'insertion : après coup, l'état antérieur n'est plus observable.
-3. **`last_created_version_code` est écrit avant le contrôle de cohérence.** Si la relecture échoue alors
-   que le `PUT` a réussi, l'absence de trace ferait republier la même version au run suivant.
-4. **`latestVersion` est relu et comparé** à l'identifiant créé. S'il n'a pas basculé, le tri par chaîne de
-   `mdm_app_version_comparison_index` (§7.4) n'a pas retenu la version : `doAutoUpdateToApplicationVersion`
-   n'a donc rien propagé, et le rattachement explicite de l'itération 6 devient obligatoire pour ce paquet.
-   Le plan continuant de proposer la mise à jour aux exécutions suivantes, le garde-fou d'idempotence
-   distingue alors « déjà créée » de « déjà créée mais non adoptée », pour que le rapport quotidien ne
-   redevienne pas silencieux sur un paquet bloqué.
-5. **Une candidate homonyme n'est jamais publiée.** Headwind réécrirait en place la version du même nom,
-   liens aux configurations compris, et ses appareils recevraient le build sans rattachement (§5). Le
-   contrôle est refait juste avant le `PUT` sur une liste fraîche, et un identifiant renvoyé déjà connu est
-   rapporté comme une réécriture, jamais comme une création.
+1. **`--apply` enforces the APK verification.** The direct URL mode publishes a pointer that the devices will
+   download themselves; publishing without having computed the hash of the bytes served would amount to
+   asserting an integrity never observed. An unverified artefact produces no write.
+2. **The configurations are read before the creation** (§4). A configuration carrying `autoUpdate` switches to
+   the new version on insertion: afterwards, the previous state can no longer be observed.
+3. **`last_created_version_code` is written before the consistency check.** If the re-read fails while the
+   `PUT` succeeded, the lack of a trace would republish the same version on the next run.
+4. **`latestVersion` is read again and compared** with the created id. If it has not switched, the string sort
+   of `mdm_app_version_comparison_index` (§7.4) did not select the version: `doAutoUpdateToApplicationVersion`
+   therefore propagated nothing, and the explicit linking of iteration 6 becomes mandatory for that package.
+   Since the plan keeps proposing the update on the following runs, the idempotence guard then tells "already
+   created" apart from "already created but not adopted", so that the daily report does not go silent again on a
+   stuck package.
+5. **A same-name candidate is never published.** Headwind would rewrite the version with the same name in place,
+   configuration links included, and its devices would receive the build without linking (§5). The check is
+   repeated right before the `PUT` on a fresh list, and an id returned that is already known is reported as a
+   rewrite, never as a creation.
 
-Un `PUT` accepté dont la réponse n'est pas exploitable (`data` absent ou d'une autre forme) est traité
-comme une création : `_put` ayant déjà levé pour une enveloppe en erreur, l'écriture a bien eu lieu. Seule
-la vérification de cohérence devient impossible. La forme exacte de cette réponse reste à confirmer (§13).
+An accepted `PUT` whose response is unusable (`data` missing or of another shape) is treated as a creation:
+since `_put` has already raised for an error envelope, the write did happen. Only the consistency check becomes
+impossible. The exact shape of this response remains to be confirmed (§13).
 
-Hors périmètre de l'itération 4 : le rattachement aux configurations, traité en 12.2.
+Out of the scope of iteration 4: linking to the configurations, covered in 12.2.
 
-### 12.2 Ce que fait exactement l'itération 6
+### 12.2 What iteration 6 does exactly
 
-Après la publication, `sync --apply` rattache les versions aux configurations qui installaient déjà
-l'application. Le rattachement ne dépend pas du statut du plan mais d'un seul critère d'état :
-`last_created_version_code > last_pushed_version_code`. La même condition couvre donc ce qui vient d'être
-publié et ce qu'une exécution précédente a laissé sans rattachement — il n'y a pas deux chemins de reprise.
+After the publication, `sync --apply` links the versions to the configurations that already installed the
+application. Linking does not depend on the status of the plan but on a single state criterion:
+`last_created_version_code > last_pushed_version_code`. The same condition therefore covers what has just been
+published and what a previous run left unlinked — there are no two recovery paths.
 
 ```mermaid
 flowchart TD
-    A[Paquet suivi] --> B{créée mais non rattachée ?}
-    B -- non --> Z[ignoré, aucune lecture]
-    B -- oui --> C{auto_approve ?}
-    C -- non --> S1[IGNORÉ, approbation manuelle attendue]
-    C -- oui --> D[GET versions, retrouver l'id par versionCode]
-    D -- absente --> S2[ÉCHEC]
-    D -- trouvée --> L["GET /applications/configurations/{appId}<br/>configurations qui installent l'application"]
+    A[Tracked package] --> B{created but not linked?}
+    B -- no --> Z[skipped, no read]
+    B -- yes --> C{auto_approve?}
+    C -- no --> S1[SKIPPED, manual approval expected]
+    C -- yes --> D[GET versions, find the id by versionCode]
+    D -- missing --> S2[FAILED]
+    D -- found --> L["GET /applications/configurations/{appId}<br/>configurations installing the application"]
     L --> E["GET /applications/version/{id}/configurations"]
-    E --> F{une configuration installe-t-elle l'application ?}
-    F -- non --> S3[IGNORÉ, progression enregistrée quand même]
-    F -- oui --> G[POST /applications/version/configurations]
-    G -- échec --> S4[ÉCHEC]
-    G -- succès --> H[set_version_progress last_pushed_version_code]
+    E --> F{does a configuration install the application?}
+    F -- no --> S3[SKIPPED, progress recorded anyway]
+    F -- yes --> G[POST /applications/version/configurations]
+    G -- failure --> S4[FAILED]
+    G -- success --> H[set_version_progress last_pushed_version_code]
 ```
 
-Quatre décisions structurantes :
+Four key decisions:
 
-1. **Les liens sont relus bruts et réémis tels quels.** `get_version_configurations` renvoie des `dict`, pas
-   des modèles : le passage par les modèles typés (`extra="ignore"`) supprimerait les champs non déclarés, et
-   convertirait `versionText` — entier côté serveur — en chaîne, ce que sa désérialisation refuse (§5).
-   C'est la seule lecture du client qui échappe volontairement au typage.
-2. **`action` est posé là où l'application est installée, et seulement là.** Headwind ne reporte pas
-   l'action d'une version à l'autre (§2.3) : une version neuve revient à `0` partout. Le service lit donc
-   les liens de l'application toutes versions confondues et, pour chaque configuration où l'une d'elles porte
-   `action = 1`, émet l'entrée de la nouvelle version avec `action = 1` et `notify = true`. Une entrée de la
-   version déjà marquée `action = 2` est réémise telle quelle, sans notification : une désinstallation
-   demandée n'est jamais annulée. Aucune autre entrée n'est émise, comme dans le panneau : le serveur
-   insérerait une entrée à `0` telle quelle (§5).
+1. **The links are read raw and sent back as they are.** `get_version_configurations` returns `dict` objects,
+   not models: going through the typed models (`extra="ignore"`) would drop the undeclared fields, and would
+   convert `versionText` — an integer server-side — into a string, which its deserialization rejects (§5). This
+   is the only read of the client that deliberately escapes typing.
+2. **`action` is set where the application is installed, and only there.** Headwind does not carry the action
+   over from one version to the next (§2.3): a new version comes back with `0` everywhere. The service therefore
+   reads the links of the application across all its versions and, for each configuration where one of them
+   carries `action = 1`, sends the entry of the new version with `action = 1` and `notify = true`. An entry of
+   the version already marked `action = 2` is sent back as is, without notification: a requested uninstall is
+   never undone. No other entry is sent, as in the panel: the server would insert an entry with `0` as it is
+   (§5).
 
-   Une version antérieure de cette conception tenait l'action pour héritée par le `COALESCE`. Le rattachement
-   ne trouvait alors aucune configuration pour une version neuve et enregistrait la progression sans rien
-   rattacher ; pour une version déjà liée, il renvoyait toutes les configurations, et créait des liens à `0`
-   là où l'application n'était pas installée.
-3. **L'identifiant de version est retrouvé par `versionCode`**, jamais repris de la publication : il peut
-   manquer (réponse de création inexploitable) et il n'existe pas du tout quand le rattachement reprend le
-   travail d'une exécution précédente.
-4. **Aucune configuration à rattacher enregistre quand même la progression.** Sans cela le paquet serait
-   signalé en attente à chaque exécution, pour un état pourtant déjà atteint.
+   An earlier version of this design took the action to be inherited through the `COALESCE`. Linking then
+   found no configuration for a new version and recorded the progress without linking anything; for a version
+   already linked, it sent back every configuration, and created `0` links where the application was not
+   installed.
+3. **The version id is found by `versionCode`**, never taken from the publication: it may be missing (unusable
+   creation response), and it does not exist at all when linking resumes the work of a previous run.
+4. **Having no configuration to link still records the progress.** Otherwise the package would be reported as
+   pending on every run, for a state already reached.
 
-`auto_approve: false` laisse la version créée mais non rattachée, signalée à chaque exécution (§7.6).
-L'approbation se fait alors dans l'interface Headwind : aucune commande d'approbation n'est fournie par le
-service, ce qui reste une extension possible.
+`auto_approve: false` leaves the version created but not linked, reported on every run (§7.6). Approval then
+happens in the Headwind interface: the service provides no approval command, which remains a possible
+extension.
 
-La notification est **demandée**, jamais constatée : `notify: true` ne déclenche `notifyDevicesOnUpdate` que
-si le service push est configuré sur l'instance (§7.5, et §13 point 4 toujours ouvert). Le rapport dit donc
-« notification demandée » et jamais « appareils notifiés » — l'API ne permet pas d'observer la différence.
+The notification is **requested**, never observed: `notify: true` only triggers `notifyDevicesOnUpdate` if the
+push service is configured on the instance (§7.5, and §13 item 4, still open). The report therefore says
+"notification requested" (`notification demandee`) and never "devices notified" — the API does not make it
+possible to observe the difference.
 
-### 12.3 Ce que fait exactement l'itération 7
+### 12.3 What iteration 7 does exactly
 
-Sous un timer, personne ne lit la sortie standard. « Rapport exploitable » signifie donc qu'une exécution
-dégradée est **détectable sans intervention humaine**, par deux canaux distincts :
+Under a timer, nobody reads the standard output. "Usable report" therefore means that a degraded run is
+**detectable without human intervention**, through two distinct channels:
 
-| Canal | Contenu | Destinataire |
+| Channel | Content | Recipient |
 | --- | --- | --- |
-| Code de sortie | `0` sain, `1` erreurs, `2` configuration ou service injoignable | l'ordonnanceur |
-| Journal JSON sur stderr | une ligne par erreur, puis une synthèse `sync.finished` | `journalctl`, collecteur de logs |
-| `fhm report` | état durable : dernière exécution, erreurs, paquets en attente | un opérateur |
+| Exit code | `0` healthy, `1` errors, `2` configuration or service unreachable | the scheduler |
+| JSON log on stderr | one line per error, then a `sync.finished` summary | `journalctl`, log collector |
+| `fhm report` | durable state: last run, errors, pending packages | an operator |
 
-Quatre décisions structurantes :
+Four key decisions:
 
-1. **Le journal est émis à la frontière CLI**, jamais depuis `domain/`. Les couches ne se connaissent que
-   dans un sens (§10) ; le domaine enregistre déjà ses événements en base via `record_event`, et la CLI les
-   relit en fin d'exécution pour les émettre. Aucune couche métier ne reçoit de logger.
-2. **Le journal part sur stderr, le rapport sur stdout.** `sync --json` et le journal sont actifs en même
-   temps : mélanger les deux flux rendrait le premier inanalysable.
-3. **La purge est une commande, pas un effet de bord.** `sync_event` croît sans limite sous un timer
-   quotidien, mais une exécution planifiée qui supprimerait silencieusement de l'historique serait pire que
-   le problème. `fhm prune --days N` demande confirmation, sauf `--yes`.
-4. **Aucun ordonnanceur embarqué** (§10). Des unités systemd d'exemple sont fournies dans `deploy/`, avec le
-   jeton en `EnvironmentFile`, un `WorkingDirectory` explicite — les chemins par défaut sont relatifs — et un
-   `RandomizedDelaySec` pour ne pas concentrer la charge sur le dépôt F-Droid.
+1. **The log is emitted at the CLI boundary**, never from `domain/`. The layers only know each other in one
+   direction (§10); the domain already records its events in the database through `record_event`, and the CLI
+   reads them back at the end of the run to emit them. No business layer receives a logger.
+2. **The log goes to stderr, the report to stdout.** `sync --json` and the log are active at the same time:
+   mixing the two streams would make the former impossible to parse.
+3. **Pruning is a command, not a side effect.** `sync_event` grows without bound under a daily timer, but a
+   scheduled run that silently deleted history would be worse than the problem. `fhm prune --days N` asks for
+   confirmation, unless `--yes` is given.
+4. **No embedded scheduler** (§10). Sample systemd units are provided in `deploy/`, with the token in an
+   `EnvironmentFile`, an explicit `WorkingDirectory` — the default paths are relative — and a
+   `RandomizedDelaySec` so as not to concentrate the load on the F-Droid repository.
 
-Hors périmètre : la vérification que les URL publiées répondent encore. F-Droid déplace les anciennes
-versions de `/repo` vers `/archive`, donc une URL publiée peut finir par ne plus répondre — mais contrôler
-cela demande une capacité réseau nouvelle, qui relève d'une itération à part.
+Out of scope: checking that the published URLs still respond. F-Droid moves old versions from `/repo` to
+`/archive`, so a published URL may end up no longer responding — but checking that requires a new network
+capability, which belongs to a separate iteration.
 
 ---
 
-## 13. Points à valider sur l'instance cible
+## 13. Points to validate on the target instance
 
-Les éléments suivants ont été établis par lecture du code source de `hmdm-server` et doivent être confirmés
-contre la version réellement déployée, via son Swagger (`/swagger-ui.html`) :
+The following items were established by reading the source code of `hmdm-server` and must be confirmed against
+the version actually deployed, through its Swagger (`/swagger-ui.html`):
 
-0. **Unicité de `pkg`** — l'itération 1 traite le cas de plusieurs applications portant le même package
-   (statut `AMBIGU`, aucune résolution automatique). Reste à voir sa fréquence réelle sur le parc : si elle
-   est courante, un critère de désambiguïsation explicite dans `packages.yaml` (par exemple
-   `application_id`) deviendra nécessaire.
-1. ~~Format attendu du champ `password` et état de l'option `transmitPassword`.~~ **Tranché** : le service
-   se connecte sur `/rest/public/jwt/login` en transmettant l'empreinte MD5 hexadécimale majuscule du mot de
-   passe, et reçoit un JWT valable 24 h (voir la section 5). Ce point avait été clos à tort comme « sans
-   objet » lorsque la conception reposait sur l'`authToken` ; le premier appel à une instance réelle l'a
-   rouvert avec un `HTTP 403`. L'option `transmitPassword` est sans effet ici : elle n'apparaît que dans
-   `AuthResource` et le contrôleur de connexion du panneau web, jamais dans le module `jwt`.
-2. **Contenu de `data` dans la réponse à `PUT /private/applications/versions`.** Le service suppose qu'elle
-   porte la version créée, mais accepte qu'elle soit vide ou d'une autre forme : l'écriture est alors
-   enregistrée sans contrôle de cohérence possible. *(Ce point remplace celui sur `FileUploadResult` et
-   l'enchaînement `POST /private/web-ui-files`, devenu sans objet : le service n'envoie aucun fichier à
-   Headwind, §8.)*
-3. Valeur de `autoUpdate` sur les configurations concernées — elle détermine si la propagation est
-   automatique ou si le rattachement explicite est obligatoire. **Point le plus sensible de l'itération 4** :
-   `sync --apply` affiche le nombre de configurations référençant l'application avant de créer la version,
-   mais ne sait pas lire `autoUpdate` lui-même. Tant que cette valeur n'est pas connue sur l'instance
-   cible, considérer qu'une création de version peut déclencher un déploiement immédiat sur le parc.
-4. Disponibilité effective du service de notification push.
-5. **Vérification de l'empreinte du dépôt** (§6) — indépendante de Headwind, mais c'est le maillon manquant
-   de la chaîne de confiance, à traiter avant une mise en production.
+0. **Uniqueness of `pkg`** — iteration 1 handles the case of several applications carrying the same package
+   (`AMBIGU` status, no automatic resolution). Its actual frequency on the fleet remains to be seen: if it is
+   common, an explicit disambiguation criterion in `packages.yaml` (for example `application_id`) will become
+   necessary.
+1. ~~Expected format of the `password` field and state of the `transmitPassword` option.~~ **Settled**: the
+   service logs in on `/rest/public/jwt/login` by sending the uppercase hexadecimal MD5 digest of the password,
+   and receives a JWT valid for 24 h (see section 5). This point had been wrongly closed as "moot" when the
+   design relied on the `authToken`; the first call to a real instance reopened it with an `HTTP 403`. The
+   `transmitPassword` option has no effect here: it only appears in `AuthResource` and in the login controller
+   of the web panel, never in the `jwt` module.
+2. **Content of `data` in the response to `PUT /private/applications/versions`.** The service assumes that it
+   carries the created version, but accepts that it may be empty or of another shape: the write is then recorded
+   without any possible consistency check. *(This point replaces the one on `FileUploadResult` and on the
+   `POST /private/web-ui-files` sequence, now moot: the service sends no file to Headwind, §8.)*
+3. Value of `autoUpdate` on the configurations concerned — it determines whether the propagation is automatic
+   or whether explicit linking is mandatory. **The most sensitive point of iteration 4**: `sync --apply`
+   displays the number of configurations referencing the application before creating the version, but cannot
+   read `autoUpdate` itself. As long as this value is not known on the target instance, assume that creating a
+   version may trigger an immediate deployment on the fleet.
+4. Actual availability of the push notification service.
+5. **Verification of the repository fingerprint** (§6) — independent of Headwind, but it is the missing link in
+   the chain of trust, to be handled before going to production.
