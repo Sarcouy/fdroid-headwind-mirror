@@ -160,14 +160,14 @@ def test_entries_are_sent_back_untouched_apart_from_action_and_notify(
 ) -> None:
     track(repository)
     server = FakeHeadwind(
-        links=[candidate(1, champInconnuDuService="valeur", screenOrder=9)],
+        links=[candidate(1, unknownServiceField="valeur", screenOrder=9)],
         application_links=[installed(1, 1)],
     )
 
     run(server, repository, make_client)
 
     item = sent(server)[1]
-    assert item["champInconnuDuService"] == "valeur"
+    assert item["unknownServiceField"] == "valeur"
     assert item["screenOrder"] == 9
     assert item["versionText"] == VERSION_ID
     assert isinstance(item["versionText"], int)
