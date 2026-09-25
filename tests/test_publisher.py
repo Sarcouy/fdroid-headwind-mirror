@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 import pytest
@@ -11,57 +11,98 @@ import pytest
 from fdroid_headwind_mirror.domain.planner import ArtifactPlan, PackagePlan, PlanStatus, SyncPlan
 from fdroid_headwind_mirror.domain.publisher import PublicationOutcome, publish_plan
 from fdroid_headwind_mirror.headwind.client import HeadwindClient
-from fdroid_headwind_mirror.state.repository import StateRepository
+from fdroid_headwind_mirror.state.repository import StateRepository, SyncEvent
 from tests.conftest import envelope, track_package
 
 APPLICATION_PATH = re.compile(r"/applications/(\d+)$")
+VERSIONS_PATH = re.compile(r"/applications/(\d+)/versions$")
 CREATED_ID = 101
+HOMONYM_ID = 41
+LATEST_ID = 42
+
+Failure = Literal["create", "configurations", "application", "versions"]
+
+
+def version_row(version_id: int, name: str, code: int | None) -> dict[str, Any]:
+    return {
+        "id": version_id,
+        "applicationId": 7,
+        "version": name,
+        "versionCode": code,
+        "split": False,
+        "url": f"https://mdm.example.org/files/vlc-{version_id}.apk",
+    }
 
 
 class FakeHeadwind:
-    def __init__(self, *, latest_version: int | None = CREATED_ID, configurations: int = 0) -> None:
+    def __init__(
+        self,
+        *,
+        latest_version: int | None = CREATED_ID,
+        configurations: int = 0,
+        versions: list[dict[str, Any]] | None = None,
+    ) -> None:
         self.puts: list[dict[str, Any]] = []
         self.latest_version = latest_version
         self.configurations = configurations
-        self.create_fails = False
+        self.versions = versions if versions is not None else []
+        # Liste servie a la lecture quand elle doit differer de celle que le PUT deduplique: une
+        # version renommee par un operateur entre les deux appels, par exemple.
+        self.listing: list[dict[str, Any]] | None = None
+        self.failing: set[Failure] = set()
         self.create_returns_nothing = False
-        self.configurations_fail = False
-        self.application_fails = False
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if request.method == "PUT" and path.endswith("/applications/versions"):
             return self._create(json.loads(request.content))
+        if VERSIONS_PATH.search(path):
+            return self._reply("versions", self.versions if self.listing is None else self.listing)
         if "/applications/configurations/" in path:
-            if self.configurations_fail:
-                return envelope(None, status="ERROR", message="error.internal.server")
-            return envelope(
+            return self._reply(
+                "configurations",
                 [
                     {"configurationId": index, "action": 1, "configurationName": f"conf{index}"}
                     for index in range(self.configurations)
-                ]
+                ],
             )
         match = APPLICATION_PATH.search(path)
         if match:
-            if self.application_fails:
-                return envelope(None, status="ERROR", message="error.internal.server")
-            return envelope(
+            return self._reply(
+                "application",
                 {
                     "id": int(match.group(1)),
                     "name": "VLC",
                     "pkg": "org.videolan.vlc",
                     "latestVersion": self.latest_version,
-                }
+                },
             )
         return envelope([])
 
+    def _reply(self, resource: Failure, data: Any) -> httpx.Response:
+        if resource in self.failing:
+            return envelope(None, status="ERROR", message="error.internal.server")
+        return envelope(data)
+
     def _create(self, body: dict[str, Any]) -> httpx.Response:
         self.puts.append(body)
-        if self.create_fails:
+        if "create" in self.failing:
             return envelope(None, status="ERROR", message="error.duplicate.application.version")
+        stored = self._store(body)
         if self.create_returns_nothing:
             return envelope(None)
-        return envelope({**body, "id": CREATED_ID})
+        return envelope(stored)
+
+    def _store(self, body: dict[str, Any]) -> dict[str, Any]:
+        # Reproduit la deduplication d'insertApplicationVersion: une version du meme nom est
+        # reecrite en place et garde son identifiant au lieu d'etre inseree.
+        for index, row in enumerate(self.versions):
+            if row["version"] == body["version"]:
+                self.versions[index] = {**body, "id": row["id"]}
+                return self.versions[index]
+        created = {**body, "id": CREATED_ID}
+        self.versions.append(created)
+        return created
 
 
 def artifact(
@@ -236,7 +277,7 @@ def test_unreadable_configurations_cancel_the_creation(
     tracked: StateRepository, make_client: Any
 ) -> None:
     server = FakeHeadwind()
-    server.configurations_fail = True
+    server.failing.add("configurations")
 
     summary = publish(plan_of(package_plan()), server, tracked, make_client)
 
@@ -249,7 +290,7 @@ def test_a_refused_creation_is_reported_and_leaves_the_state_untouched(
     tracked: StateRepository, make_client: Any
 ) -> None:
     server = FakeHeadwind()
-    server.create_fails = True
+    server.failing.add("create")
 
     summary = publish(plan_of(package_plan()), server, tracked, make_client)
 
@@ -300,7 +341,7 @@ def test_an_unreadable_application_does_not_undo_the_creation(
     tracked: StateRepository, make_client: Any
 ) -> None:
     server = FakeHeadwind()
-    server.application_fails = True
+    server.failing.add("application")
 
     summary = publish(plan_of(package_plan()), server, tracked, make_client)
 
@@ -328,3 +369,103 @@ def test_an_architecture_without_headwind_field_is_skipped(
 
     assert not server.puts
     assert "x86_64" in summary.entries[0].detail
+
+
+def events(repository: StateRepository) -> list[SyncEvent]:
+    return repository.list_events(repository.list_runs(1)[0].id)
+
+
+@pytest.mark.parametrize("auto_approve", [False, True])
+def test_a_name_carried_by_the_latest_version_blocks_the_creation(
+    repository: StateRepository, make_client: Any, auto_approve: bool
+) -> None:
+    track_package(repository, auto_approve=auto_approve)
+    server = FakeHeadwind(latest_version=HOMONYM_ID, versions=[version_row(HOMONYM_ID, "3.7.1", 0)])
+
+    summary = publish(plan_of(package_plan()), server, repository, make_client)
+
+    assert not server.puts
+    entry = summary.entries[0]
+    assert entry.outcome is PublicationOutcome.BLOCKED
+    assert entry.version_id == HOMONYM_ID
+    assert f"#{HOMONYM_ID}" in entry.detail
+    assert "reecrirait en place" in entry.detail
+    assert (summary.blocked, summary.created) == (1, 0)
+    assert [(event.level, event.code) for event in events(repository)] == [
+        ("WARNING", "publish.rewrite_blocked")
+    ]
+    assert repository.get_tracked_package("org.videolan.vlc").last_created_version_code is None
+
+
+@pytest.mark.parametrize("auto_approve", [False, True])
+def test_a_name_carried_by_an_older_version_blocks_the_creation(
+    repository: StateRepository, make_client: Any, auto_approve: bool
+) -> None:
+    track_package(repository, auto_approve=auto_approve)
+    server = FakeHeadwind(
+        latest_version=LATEST_ID,
+        versions=[version_row(LATEST_ID, "3.8.0", 0), version_row(HOMONYM_ID, "3.7.1", 0)],
+    )
+
+    summary = publish(plan_of(package_plan()), server, repository, make_client)
+
+    assert not server.puts
+    entry = summary.entries[0]
+    assert entry.outcome is PublicationOutcome.BLOCKED
+    assert entry.version_id == HOMONYM_ID
+    assert f"#{HOMONYM_ID}" in entry.detail
+    assert f"#{LATEST_ID}" not in entry.detail
+    assert repository.get_tracked_package("org.videolan.vlc").last_created_version_code is None
+
+
+@pytest.mark.parametrize("auto_approve", [False, True])
+def test_a_new_name_is_created(
+    repository: StateRepository, make_client: Any, auto_approve: bool
+) -> None:
+    track_package(repository, auto_approve=auto_approve)
+    server = FakeHeadwind(versions=[version_row(70, "3.6.5", 13060506)])
+
+    summary = publish(plan_of(package_plan()), server, repository, make_client)
+
+    assert len(server.puts) == 1
+    entry = summary.entries[0]
+    assert entry.outcome is PublicationOutcome.CREATED
+    assert entry.version_id == CREATED_ID
+    assert "latestVersion bascule" in entry.detail
+    assert repository.get_tracked_package("org.videolan.vlc").last_created_version_code == 13070106
+
+
+def test_an_identifier_known_before_the_creation_is_reported_as_a_rewrite(
+    tracked: StateRepository, make_client: Any
+) -> None:
+    server = FakeHeadwind(latest_version=HOMONYM_ID, versions=[version_row(HOMONYM_ID, "3.7.1", 0)])
+    server.listing = [version_row(HOMONYM_ID, "3.7.0", 0)]
+
+    summary = publish(plan_of(package_plan()), server, tracked, make_client)
+
+    assert len(server.puts) == 1
+    entry = summary.entries[0]
+    assert entry.outcome is PublicationOutcome.REWRITTEN
+    assert entry.version_id == HOMONYM_ID
+    assert f"reecrit en place la version existante #{HOMONYM_ID}" in entry.detail
+    assert "bascule" not in entry.detail
+    assert entry.latest_version_switched is None
+    assert (summary.rewritten, summary.created) == (1, 0)
+    assert ("WARNING", "publish.rewritten") in [
+        (event.level, event.code) for event in events(tracked)
+    ]
+    assert tracked.get_tracked_package("org.videolan.vlc").last_created_version_code == 13070106
+
+
+def test_unreadable_versions_cancel_the_creation(
+    tracked: StateRepository, make_client: Any
+) -> None:
+    server = FakeHeadwind()
+    server.failing.add("versions")
+
+    summary = publish(plan_of(package_plan()), server, tracked, make_client)
+
+    assert not server.puts
+    assert summary.entries[0].outcome is PublicationOutcome.FAILED
+    assert "versions illisibles" in summary.entries[0].detail
+    assert tracked.get_tracked_package("org.videolan.vlc").last_created_version_code is None

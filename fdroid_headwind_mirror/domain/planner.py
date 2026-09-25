@@ -10,6 +10,7 @@ from fdroid_headwind_mirror.fdroid.models import Index
 from fdroid_headwind_mirror.fdroid.resolver import Candidate, resolve
 from fdroid_headwind_mirror.headwind.client import HeadwindClient
 from fdroid_headwind_mirror.headwind.errors import HeadwindError
+from fdroid_headwind_mirror.headwind.models import ApplicationVersion
 from fdroid_headwind_mirror.state.repository import StateRepository
 
 
@@ -55,6 +56,7 @@ class PackagePlan(BaseModel):
     candidate_version_code: int | None = None
     split: bool | None = None
     shape_change: bool = False
+    same_name_version_id: int | None = None
     signer_state: SignerState = SignerState.UNKNOWN
     expected_signer: str | None = None
     candidate_signer: str | None = None
@@ -83,6 +85,12 @@ class SyncPlan(BaseModel):
     @property
     def up_to_date(self) -> int:
         return sum(1 for p in self.packages if p.status is PlanStatus.UP_TO_DATE)
+
+
+def same_name_version(versions: list[ApplicationVersion], name: str) -> ApplicationVersion | None:
+    # Egalite stricte, comme la requete de deduplication de Headwind (version = #{versionNumber}):
+    # une comparaison normalisee ferait diverger ce garde-fou de ce que le serveur fusionne.
+    return next((version for version in versions if version.version == name), None)
 
 
 def build_plan(
@@ -160,7 +168,7 @@ def _plan_one(
 
     candidate = resolution.candidate
     signer_state, expected = _check_signer(entry.pkg, candidate, repository, run_id)
-    headwind = _headwind_state(application_id, client)
+    headwind = _headwind_state(application_id, candidate.version_name, client)
 
     if not headwind.readable:
         repository.record_event(
@@ -198,6 +206,7 @@ def _plan_one(
         candidate_version_code=candidate.version_code,
         split=candidate.split,
         shape_change=headwind.split is not None and headwind.split != candidate.split,
+        same_name_version_id=headwind.same_name_version_id,
         signer_state=signer_state,
         expected_signer=expected,
         candidate_signer=candidate.signer,
@@ -248,10 +257,13 @@ class HeadwindState(BaseModel):
     version: str | None = None
     version_code: int | None = None
     split: bool | None = None
+    same_name_version_id: int | None = None
     readable: bool = True
 
 
-def _headwind_state(application_id: int, client: HeadwindClient) -> HeadwindState:
+def _headwind_state(
+    application_id: int, candidate_name: str, client: HeadwindClient
+) -> HeadwindState:
     try:
         versions = client.get_application_versions(application_id)
     except HeadwindError:
@@ -259,8 +271,12 @@ def _headwind_state(application_id: int, client: HeadwindClient) -> HeadwindStat
     if not versions:
         return HeadwindState()
     latest = max(versions, key=lambda version: version.version_code or 0)
+    homonym = same_name_version(versions, candidate_name)
     return HeadwindState(
-        version=latest.version, version_code=latest.version_code, split=latest.split
+        version=latest.version,
+        version_code=latest.version_code,
+        split=latest.split,
+        same_name_version_id=homonym.id if homonym is not None else None,
     )
 
 

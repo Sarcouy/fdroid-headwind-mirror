@@ -34,8 +34,10 @@ Elle conditionne tout le reste de la conception.
 
 ### 2.1 `latestVersion` est recalculé automatiquement
 
-À chaque `insertApplicationVersion`, le serveur appelle `recalculateLatestVersion(applicationId)`, qui
-positionne `applications.latestVersion` sur la version dont l'index de comparaison est le plus élevé.
+À chaque `insertApplicationVersion` qui insère réellement une ligne, le serveur appelle
+`recalculateLatestVersion(applicationId)`, qui positionne `applications.latestVersion` sur la version dont
+l'index de comparaison est le plus élevé. Une version dont le nom existe déjà n'est pas insérée mais
+réécrite en place, sans ce recalcul (§5, « Déduplication par nom de version »).
 
 ### 2.2 La propagation vers les configurations est partiellement automatique
 
@@ -184,6 +186,10 @@ sequenceDiagram
             F-->>S: fichier APK
             S->>S: vérifier sha256 vs index
 
+            S->>H: GET /rest/private/applications/{appId}/versions
+            H-->>S: versions existantes
+            Note over S: nom déjà porté ⇒ publication bloquée, aucune écriture (§5)
+
             S->>H: PUT /rest/private/applications/versions
             Note over H: recalculateLatestVersion<br/>+ autoUpdate des configurations concernées
             H-->>S: version créée (id)
@@ -217,6 +223,10 @@ version qu'il vient de créer. Si les deux diffèrent, cela signifie que le clas
 n'a pas retenu la nouvelle version (voir §7.4) : l'auto-update ne s'est pas déclenché, et le service doit
 alors forcer explicitement le lien. Ce contrôle rend le service robuste face aux formats de version exotiques.
 
+La comparaison ne vaut que pour un identifiant nouveau. Un identifiant qui existait avant l'appel signale une
+réécriture en place (§5), qui laisse `latestVersion` inchangé par construction : elle est rapportée comme
+telle, jamais comme une bascule.
+
 ---
 
 ## 5. API Headwind utilisée
@@ -247,8 +257,80 @@ Toutes les routes sont préfixées par `/rest` et requièrent l'en-tête `Author
 }
 ```
 
-`id` absent ⇒ création. Pour un paquet publié par ABI, on envoie plutôt `split: true` avec `urlArmeabi` et
-`urlArm64`.
+`id` absent ⇒ création, **sauf si une version du même nom existe déjà** (section suivante). Pour un paquet
+publié par ABI, on envoie plutôt `split: true` avec `urlArmeabi` et `urlArm64`.
+
+### Déduplication par nom de version
+
+`insertApplicationVersion` (`ApplicationDAO`) cherche d'abord une version homonyme : `getDuplicateAppVersion`
+appelle `getDuplicateVersionForApp(appId, -1, version)`, dont la requête est
+
+```sql
+SELECT COALESCE(
+  (SELECT id FROM applicationVersions
+   WHERE applicationId = :appId AND version = :version AND id <> -1), 0)
+```
+
+La recherche porte sur **toutes** les versions de l'application, pas seulement la dernière, et compare la
+chaîne `version` à l'identique. Quand elle aboutit, le serveur reprend l'identifiant trouvé et exécute
+`updateApplicationVersion` sur la ligne existante au lieu d'en insérer une nouvelle :
+
+| Élément | Après la réécriture |
+| --- | --- |
+| `version`, `versionCode`, `split` | valeurs de la requête |
+| `url` | valeur de la requête, donc `NULL` pour une version split |
+| `urlArmeabi`, `urlArm64` | valeurs de la requête ; pour une version split, l'architecture absente de la requête garde l'URL de l'ancienne ligne |
+| `apkHash` | effacé, la requête n'en portant pas |
+| `latestVersion` de l'application | inchangé : ce chemin n'appelle pas `recalculateLatestVersion` |
+| Liens `configurationApplications` | conservés ; si la ligne est la `latestVersion`, l'auto-update (§2.2) s'applique en plus |
+
+La réponse renvoie la ligne existante, donc un identifiant qui existait avant l'appel.
+
+Côté appareil, le launcher compare les `versionCode` dès que celui de la configuration est non nul et non
+zéro (`InstallUtils.areVersionsEqual`), et les noms sinon. Une version saisie sans code (`versionCode` 0),
+puis réécrite avec un code réel, cesse donc d'être reconnue comme installée : chaque appareil des
+configurations rattachées à cette ligne réinstalle l'application à sa prochaine synchronisation, **sans
+aucun rattachement**. `auto_approve: false` n'a alors plus d'effet.
+
+Le service en tire trois règles :
+
+1. **Lecture juste avant l'écriture.** Le publisher relit la liste complète des versions de l'application
+   juste avant le `PUT`, plutôt que de reprendre celle du plan, que la vérification des APK a pu rendre
+   obsolète. Une version portant exactement le nom de la candidate bloque la publication, **quel que soit
+   `auto_approve`** : aucun appel d'écriture, issue `blocked`, événement `WARNING`
+   `publish.rewrite_blocked` qui nomme la version existante. `sync --dry-run` signale déjà le conflit
+   (champ `same_name_version_id` du plan).
+2. **Détection a posteriori.** Si le `PUT` renvoie un identifiant qui figurait dans la liste relue, la
+   publication est rapportée comme une réécriture en place (`rewritten`, événement `WARNING`
+   `publish.rewritten`), jamais comme une création ni comme une bascule de `latestVersion`.
+   `last_created_version_code` est tout de même enregistré : l'écriture a eu lieu, et l'omettre la ferait
+   répéter à chaque exécution.
+3. **Ni `blocked` ni `rewritten` ne sont des erreurs.** Comme une approbation en attente, ce sont des
+   décisions humaines en suspens : le code de sortie n'en tient pas compte, mais le résumé de `sync` et la
+   ligne `sync.finished` du journal portent `publications_blocked` et `versions_rewritten`, ce qui les rend
+   détectables sous timer. `fhm report`, qui ne lit que l'état local, ne les restitue pas.
+
+Bloquer aussi avec `auto_approve: true` est délibéré :
+
+- la réécriture efface l'ancien build sans retour arrière possible, et Headwind ne peut pas tenir deux
+  versions du même nom ;
+- appliquée à une version ancienne, elle change ce qu'installent des configurations volontairement laissées
+  sur cette version, sans que `latestVersion` bouge ;
+- le rattachement qui suivrait renverrait toutes les lignes de la version, y compris celles des
+  configurations qui n'installaient pas l'application, et le serveur les insère sans filtre. Ce défaut du
+  rattachement est traité à part.
+
+Le coût est assumé : un rebuild publié par F-Droid sous le même `versionName` avec un `versionCode`
+supérieur n'est jamais livré automatiquement. Assouplir la règle pour `auto_approve: true`, au moins quand
+l'homonyme est la `latestVersion`, ne se discutera qu'une fois le rattachement corrigé.
+
+Le conflit se lève dans Headwind, par un opérateur : il accepte la réécriture en modifiant lui-même la
+version existante, ou libère le nom en la renommant ou en la supprimant, après quoi le service crée la
+version normalement.
+
+Limite résiduelle : une version homonyme apparue entre la relecture et le `PUT` échappe aux deux contrôles,
+son identifiant étant inconnu du service. La fenêtre se limite à la lecture des configurations qui les
+sépare.
 
 ### Corps de `POST /rest/private/applications/version/configurations`
 
@@ -506,6 +588,10 @@ indicateur `auto_approve` :
 
 Le second mode a un coût d'implémentation quasi nul et évite que le service soit désactivé au premier doute.
 
+Dans les deux modes, une candidate dont le nom est déjà porté par une version Headwind n'est pas publiée :
+créer la version la réécrirait en place et la déploierait sans rattachement (§5, « Déduplication par nom de
+version »).
+
 #### Conséquence sur le suivi d'état
 
 Ce mode crée un état intermédiaire — « version présente dans Headwind, non rattachée » — qu'un unique
@@ -523,6 +609,10 @@ D'où deux colonnes distinctes en §9 :
 Une version en attente d'approbation est exactement celle où `last_created_version_code >
 last_pushed_version_code`. L'exécution suivante saute alors la création et se contente de rappeler
 l'approbation en attente dans le rapport, sans écriture.
+
+La réécriture évoquée dans le tableau ne se limite pas aux versions créées par le service : toute version
+homonyme, saisie à la main par exemple, est réécrite de la même façon, liens aux configurations compris.
+C'est ce qui justifie le contrôle d'homonymie décrit en §5.
 
 ---
 
@@ -722,16 +812,22 @@ flowchart TD
     B -- non --> S1[IGNORÉ, aucune écriture]
     B -- oui --> C{versionCode déjà créé ?}
     C -- oui --> S2[IGNORÉ, idempotence]
-    C -- non --> D[GET configurations de l'application]
+    C -- non --> V[GET versions de l'application]
+    V -- échec --> S5[ÉCHEC, création annulée]
+    V -- succès --> N{nom déjà porté par une version ?}
+    N -- oui --> S6[BLOQUÉE, aucune écriture]
+    N -- non --> D[GET configurations de l'application]
     D -- échec --> S3[ÉCHEC, création annulée]
     D -- succès --> E[PUT /private/applications/versions]
     E -- échec --> S4[ÉCHEC]
     E -- succès --> F[set_version_progress last_created_version_code]
-    F --> G[GET application, comparaison latestVersion]
+    F --> R{identifiant déjà connu ?}
+    R -- oui --> S7[RÉÉCRITE EN PLACE]
+    R -- non --> G[GET application, comparaison latestVersion]
     G --> H[CRÉÉE]
 ```
 
-Quatre décisions structurantes :
+Cinq décisions structurantes :
 
 1. **`--apply` impose la vérification des APK.** Le mode URL directe publie un pointeur que les appareils
    téléchargeront eux-mêmes ; publier sans avoir calculé l'empreinte des octets servis reviendrait à
@@ -746,6 +842,10 @@ Quatre décisions structurantes :
    Le plan continuant de proposer la mise à jour aux exécutions suivantes, le garde-fou d'idempotence
    distingue alors « déjà créée » de « déjà créée mais non adoptée », pour que le rapport quotidien ne
    redevienne pas silencieux sur un paquet bloqué.
+5. **Une candidate homonyme n'est jamais publiée.** Headwind réécrirait en place la version du même nom,
+   liens aux configurations compris, et ses appareils recevraient le build sans rattachement (§5). Le
+   contrôle est refait juste avant le `PUT` sur une liste fraîche, et un identifiant renvoyé déjà connu est
+   rapporté comme une réécriture, jamais comme une création.
 
 Un `PUT` accepté dont la réponse n'est pas exploitable (`data` absent ou d'une autre forme) est traité
 comme une création : `_put` ayant déjà levé pour une enveloppe en erreur, l'écriture a bien eu lieu. Seule

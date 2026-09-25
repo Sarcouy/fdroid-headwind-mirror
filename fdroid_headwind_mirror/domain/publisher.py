@@ -4,10 +4,15 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from fdroid_headwind_mirror.domain.planner import PackagePlan, PlanStatus, SyncPlan
+from fdroid_headwind_mirror.domain.planner import (
+    PackagePlan,
+    PlanStatus,
+    SyncPlan,
+    same_name_version,
+)
 from fdroid_headwind_mirror.headwind.client import HeadwindClient
 from fdroid_headwind_mirror.headwind.errors import HeadwindError
-from fdroid_headwind_mirror.headwind.models import NewApplicationVersion
+from fdroid_headwind_mirror.headwind.models import ApplicationVersion, NewApplicationVersion
 from fdroid_headwind_mirror.state.repository import StateRepository
 
 _URL_FIELD_BY_ARCH: dict[str, str] = {"arm64": "url_arm64", "armeabi": "url_armeabi"}
@@ -15,6 +20,8 @@ _URL_FIELD_BY_ARCH: dict[str, str] = {"arm64": "url_arm64", "armeabi": "url_arme
 
 class PublicationOutcome(StrEnum):
     CREATED = "CREATED"
+    REWRITTEN = "REWRITTEN"
+    BLOCKED = "BLOCKED"
     SKIPPED = "SKIPPED"
     FAILED = "FAILED"
 
@@ -43,6 +50,14 @@ class PublicationSummary(BaseModel):
     @property
     def created(self) -> int:
         return self._count(PublicationOutcome.CREATED)
+
+    @property
+    def rewritten(self) -> int:
+        return self._count(PublicationOutcome.REWRITTEN)
+
+    @property
+    def blocked(self) -> int:
+        return self._count(PublicationOutcome.BLOCKED)
 
     @property
     def skipped(self) -> int:
@@ -85,6 +100,52 @@ def _publish_one(
         repository.record_event(run_id, "WARNING", "publish.skipped", prepared, pkg=entry.pkg)
         return _entry(entry, PublicationOutcome.SKIPPED, prepared)
 
+    # Relues ici plutot que reprises du plan: la verification des APK s'intercale entre les deux,
+    # et seul l'etat present dit si Headwind creera une version ou en reecrira une en place.
+    try:
+        versions = client.get_application_versions(prepared.application_id)
+    except HeadwindError as exc:
+        detail = f"versions illisibles, publication annulee: {exc}"
+        repository.record_event(run_id, "ERROR", "publish.aborted", detail, pkg=entry.pkg)
+        return _entry(entry, PublicationOutcome.FAILED, detail)
+
+    homonym = same_name_version(versions, prepared.version)
+    if homonym is not None:
+        return _blocked(entry, homonym, repository, run_id)
+
+    return _create(
+        entry, prepared, {version.id for version in versions}, client, repository, run_id=run_id
+    )
+
+
+def _blocked(
+    entry: PackagePlan, homonym: ApplicationVersion, repository: StateRepository, run_id: int
+) -> PublicationEntry:
+    # Bloque quel que soit auto_approve. Headwind ne tient qu'une version par nom: la creer
+    # reecrit la version homonyme en place, liens aux configurations compris, si bien que ses
+    # appareils recoivent le nouveau build sans rattachement et que l'ancien est perdu.
+    detail = (
+        f"version {homonym.version} deja presente dans Headwind (#{homonym.id},"
+        f" {_code_label(homonym.version_code)}): Headwind la reecrirait en place avec ses"
+        " rattachements aux configurations, publication bloquee"
+    )
+    repository.record_event(run_id, "WARNING", "publish.rewrite_blocked", detail, pkg=entry.pkg)
+    return _entry(entry, PublicationOutcome.BLOCKED, detail, version_id=homonym.id)
+
+
+def _code_label(version_code: int | None) -> str:
+    return "sans versionCode" if version_code is None else f"versionCode {version_code}"
+
+
+def _create(
+    entry: PackagePlan,
+    prepared: NewApplicationVersion,
+    existing_ids: set[int],
+    client: HeadwindClient,
+    repository: StateRepository,
+    *,
+    run_id: int,
+) -> PublicationEntry:
     # Les liens sont lus avant la creation: si une configuration porte autoUpdate, Headwind la
     # bascule sur la nouvelle version des l'insertion, et l'etat d'avant n'est plus observable.
     try:
@@ -103,7 +164,12 @@ def _publish_one(
         repository.record_event(run_id, "ERROR", "publish.failed", detail, pkg=entry.pkg)
         return _entry(entry, PublicationOutcome.FAILED, detail, configurations=configurations)
 
+    # Enregistree aussi pour une reecriture en place: l'ecriture a eu lieu, et l'omettre la
+    # ferait repeter a chaque execution.
     repository.set_version_progress(entry.pkg, last_created_version_code=prepared.version_code)
+    if created is not None and created.id in existing_ids:
+        return _rewritten(entry, created.id, configurations, repository, run_id)
+
     switched = (
         None
         if created is None
@@ -124,6 +190,28 @@ def _publish_one(
         version_id=created.id if created else None,
         configurations=configurations,
         switched=switched,
+    )
+
+
+def _rewritten(
+    entry: PackagePlan,
+    version_id: int,
+    configurations: int,
+    repository: StateRepository,
+    run_id: int,
+) -> PublicationEntry:
+    detail = (
+        f"Headwind a reecrit en place la version existante #{version_id} au lieu d'en creer une,"
+        f" {configurations} configuration(s) concernee(s): celles rattachees a cette version"
+        " deploient ce build sans rattachement explicite"
+    )
+    repository.record_event(run_id, "WARNING", "publish.rewritten", detail, pkg=entry.pkg)
+    return _entry(
+        entry,
+        PublicationOutcome.REWRITTEN,
+        detail,
+        version_id=version_id,
+        configurations=configurations,
     )
 
 
