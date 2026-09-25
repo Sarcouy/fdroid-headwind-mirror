@@ -24,8 +24,8 @@ APPLICATION_LINKS_PATH = re.compile(r"/applications/configurations/(\d+)$")
 
 
 def candidate(configuration_id: int, action: int = 0, **extra: Any) -> dict[str, Any]:
-    # Ligne de GET version/{id}/configurations: sans lien vers la version demandee, id est nul
-    # et action vaut 0, le serveur ne reportant pas l'action d'une autre version.
+    # Row of GET version/{id}/configurations: without a link to the requested version, id is
+    # null and action is 0, since the server does not carry over the action of another version.
     return {
         "id": None if action == 0 else 900 + configuration_id,
         "configurationId": configuration_id,
@@ -44,8 +44,8 @@ def candidate(configuration_id: int, action: int = 0, **extra: Any) -> dict[str,
 
 
 def installed(configuration_id: int, action: int) -> dict[str, Any]:
-    # Ligne de GET applications/configurations/{id}: un lien de l'application, toutes versions
-    # confondues, ou action 0 pour une configuration qui n'en porte aucun.
+    # Row of GET applications/configurations/{id}: a link of the application, whatever its
+    # version, or action 0 for a configuration that carries none.
     return {"configurationId": configuration_id, "applicationId": APPLICATION_ID, "action": action}
 
 
@@ -56,7 +56,7 @@ class FakeHeadwind:
         application_links: list[dict[str, Any]] | None = None,
     ) -> None:
         self.posts: list[dict[str, Any]] = []
-        # Par defaut, une version neuve dont la precedente est installee dans deux des trois
+        # By default, a new version whose previous one is installed in two of the three
         # configurations.
         self.links = [candidate(1), candidate(2), candidate(3)] if links is None else links
         self.application_links = (

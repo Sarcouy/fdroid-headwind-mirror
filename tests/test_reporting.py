@@ -114,8 +114,8 @@ def test_pruning_removes_old_runs_and_their_events(workspace: Path) -> None:
     with StateRepository(workspace / "state.db") as repository:
         old_run = repository.start_run()
         repository.record_event(old_run, "INFO", "a.b", "ancien")
-        # pylint: disable=protected-access  # start_run horodate a maintenant: dater un run
-        # dans le passe demande d'ecrire directement en base, ce que l'API n'expose pas.
+        # pylint: disable=protected-access  # start_run timestamps with now: dating a run in
+        # the past requires writing to the database directly, which the API does not expose.
         repository._connection.execute(
             "UPDATE sync_run SET started_at = ? WHERE id = ?",
             ((datetime.now(UTC) - timedelta(days=200)).isoformat(timespec="seconds"), old_run),

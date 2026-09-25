@@ -46,8 +46,8 @@ class FakeHeadwind:
         self.latest_version = latest_version
         self.configurations = configurations
         self.versions = versions if versions is not None else []
-        # Liste servie a la lecture quand elle doit differer de celle que le PUT deduplique: une
-        # version renommee par un operateur entre les deux appels, par exemple.
+        # List served on read when it must differ from the one the PUT deduplicates against: a
+        # version renamed by an operator between the two calls, for example.
         self.listing: list[dict[str, Any]] | None = None
         self.failing: set[Failure] = set()
         self.create_returns_nothing = False
@@ -94,8 +94,8 @@ class FakeHeadwind:
         return envelope(stored)
 
     def _store(self, body: dict[str, Any]) -> dict[str, Any]:
-        # Reproduit la deduplication d'insertApplicationVersion: une version du meme nom est
-        # reecrite en place et garde son identifiant au lieu d'etre inseree.
+        # Reproduces the deduplication of insertApplicationVersion: a version with the same name
+        # is rewritten in place and keeps its id instead of being inserted.
         for index, row in enumerate(self.versions):
             if row["version"] == body["version"]:
                 self.versions[index] = {**body, "id": row["id"]}

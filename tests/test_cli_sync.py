@@ -62,7 +62,7 @@ VERSIONS: dict[int, list[dict[str, Any]]] = {
     ],
     9: [{"id": 90, "applicationId": 9, "version": "1.0", "versionCode": 1, "split": False}],
 }
-# Version saisie a la main, sans versionCode, qui porte deja le nom du candidat F-Droid.
+# A version entered by hand, without versionCode, already carrying the F-Droid candidate's name.
 HOMONYM = [{"id": 41, "applicationId": 7, "version": "3.7.1", "versionCode": 0, "split": False}]
 
 
@@ -107,8 +107,8 @@ def headwind_handler(request: httpx.Request) -> httpx.Response:
 
 
 def headwind_read(path: str) -> httpx.Response:
-    # La version creee n'a encore aucun lien, donc action 0: c'est la version precedente,
-    # installee dans la configuration 3, qui designe ou la rattacher.
+    # The created version has no link yet, hence action 0: the previous version, installed in
+    # configuration 3, is what designates where to link it.
     if path.endswith("/applications/version/700/configurations"):
         return envelope(
             [{"configurationId": 3, "applicationId": 7, "action": 0, "versionText": 700}]
