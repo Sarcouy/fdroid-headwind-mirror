@@ -2,31 +2,31 @@
 
 [![CI](https://github.com/Sarcouy/fdroid-headwind-mirror/actions/workflows/ci.yml/badge.svg)](https://github.com/Sarcouy/fdroid-headwind-mirror/actions/workflows/ci.yml)
 
-Service de synchronisation des mises à jour d'applications F-Droid vers [Headwind MDM](https://h-mdm.com/).
+A service that synchronises F-Droid application updates to [Headwind MDM](https://h-mdm.com/).
 
-La conception complète est décrite dans [docs/architecture.md](docs/architecture.md), dont la section 12.1
-détaille le déroulé de la publication. La récupération de l'index F-Droid et la règle de sélection de la
-version candidate font l'objet d'une note séparée, [docs/iteration-2.md](docs/iteration-2.md).
+The full design is described in [docs/architecture.md](docs/architecture.md), whose section 12.1 details how a
+publication unfolds. Fetching the F-Droid index and the rule that selects the candidate version are covered by a
+separate note, [docs/iteration-2.md](docs/iteration-2.md).
 
-## État
+## Status
 
-| Itération | Périmètre | État |
+| Iteration | Scope | Status |
 | --- | --- | --- |
-| 1 | Client Headwind en lecture seule, état local, commande `status` | ✅ livrée |
-| 2 | Client F-Droid, résolution de version, `sync --dry-run` | ✅ livrée |
-| 3 | Vérifications (sha256, signataire, ABI) | ✅ livrée |
-| 4 | Publication d'une version (mode URL directe) | ✅ livrée |
-| 5 | ~~Mode miroir (envoi de l'APK)~~ | ❌ abandonnée |
-| 6 | Rattachement aux configurations et notification | ✅ livrée |
-| 7 | Ordonnancement, rapport, supervision | ✅ livrée |
+| 1 | Read-only Headwind client, local state, `status` command | ✅ delivered |
+| 2 | F-Droid client, version resolution, `sync --dry-run` | ✅ delivered |
+| 3 | Verification (sha256, signer, ABI) | ✅ delivered |
+| 4 | Publication of a version (direct URL mode) | ✅ delivered |
+| 5 | ~~Mirror mode (APK upload)~~ | ❌ abandoned |
+| 6 | Linking to the configurations and notification | ✅ delivered |
+| 7 | Scheduling, reporting, monitoring | ✅ delivered |
 
-L'itération 5 est abandonnée : **Headwind n'hébergera jamais les APK.** Les versions publiées pointent
-vers le dépôt F-Droid et les appareils les téléchargent eux-mêmes, ce qui suppose qu'ils atteignent
-`f-droid.org`. Le service ne télécharge les APK que pour en vérifier l'empreinte avant publication.
+Iteration 5 is abandoned: **Headwind will never host the APKs.** The published versions point to the F-Droid
+repository and the devices download them themselves, which assumes they can reach `f-droid.org`. The service
+only downloads the APKs to verify their hash before publication.
 
-`sync --apply` est la seule commande qui écrit dans Headwind. Elle n'a jamais été exécutée contre une
-instance réelle : publication et rattachement ne sont validés que face à un serveur simulé, et aucun
-appareil n'a reçu de mise à jour par ce chemin.
+`sync --apply` is the only command that writes to Headwind. It has never been run against a real instance:
+publication and linking are only validated against a simulated server, and no device has received an update
+through this path.
 
 ## Installation
 
@@ -36,45 +36,44 @@ poetry install
 
 ## Configuration
 
-### Variables d'environnement
+### Environment variables
 
-| Variable | Obligatoire | Défaut | Rôle |
+| Variable | Required | Default | Role |
 | --- | --- | --- | --- |
-| `FHM_HEADWIND_URL` | oui | — | URL du panneau Headwind, avec ou sans le suffixe `/rest` |
-| `FHM_HEADWIND_LOGIN` | oui | — | Identifiant de l'utilisateur de service Headwind |
-| `FHM_HEADWIND_PASSWORD` | oui | — | Mot de passe de ce compte, échangé contre un JWT au démarrage |
-| `FHM_PACKAGES_FILE` | non | `packages.yaml` | Liste déclarative des paquets suivis |
-| `FHM_DATABASE_PATH` | non | `state.db` | Base SQLite d'état local |
-| `FHM_CACHE_DIR` | non | `.cache` | Cache de l'index F-Droid, projeté sur les paquets suivis |
-| `FHM_REQUEST_TIMEOUT` | non | `30.0` | Délai d'expiration HTTP vers Headwind, en secondes |
-| `FHM_FDROID_TIMEOUT` | non | `300.0` | Délai d'expiration vers le dépôt F-Droid, en secondes |
+| `FHM_HEADWIND_URL` | yes | — | URL of the Headwind panel, with or without the `/rest` suffix |
+| `FHM_HEADWIND_LOGIN` | yes | — | Login of the Headwind service user |
+| `FHM_HEADWIND_PASSWORD` | yes | — | Password of that account, exchanged for a JWT at startup |
+| `FHM_PACKAGES_FILE` | no | `packages.yaml` | Declarative list of the tracked packages |
+| `FHM_DATABASE_PATH` | no | `state.db` | SQLite database of the local state |
+| `FHM_CACHE_DIR` | no | `.cache` | Cache of the F-Droid index, projected onto the tracked packages |
+| `FHM_REQUEST_TIMEOUT` | no | `30.0` | HTTP timeout towards Headwind, in seconds |
+| `FHM_FDROID_TIMEOUT` | no | `300.0` | Timeout towards the F-Droid repository, in seconds |
 
-Elles peuvent aussi être placées dans un fichier `.env` à la racine.
+They can also be placed in a `.env` file at the root.
 
-### Compte de service Headwind
+### Headwind service account
 
-Créez un utilisateur de service dans le panneau Headwind avec le rôle **User**, et non Admin. Les deux
-portent `edit_application_versions`, mais « User » laisse de côté l'accès aux paramètres système —
-l'interface expose des rôles, pas les permissions nommées dans le tableau de la section 5 de la conception.
+Create a service user in the Headwind panel with the **User** role, not Admin. Both carry
+`edit_application_versions`, but "User" leaves out access to the system settings — the interface exposes
+roles, not the permissions named in the table of section 5 of the design.
 
-Son nom est libre : le service ne présume d'aucun identifiant et utilise celui que vous déclarez.
+Its name is up to you: the service assumes no particular login and uses the one you declare.
 
-Son identifiant et son mot de passe suffisent : au premier appel, le service les échange contre un JWT sur
-`POST /rest/public/jwt/login`, puis présente ce jeton en `Authorization: Bearer` pendant toute l'exécution.
-Le mot de passe n'est jamais journalisé et ne quitte le processus que sous forme d'empreinte MD5, seul
-format accepté par ce point d'entrée.
+Its login and password are enough: on the first call, the service exchanges them for a JWT on
+`POST /rest/public/jwt/login`, then presents that token as `Authorization: Bearer` for the whole run. The
+password is never logged and only leaves the process as an MD5 digest, the only format this endpoint accepts.
 
-L'`authToken` visible en base **n'est pas** un identifiant de connexion : les routes `/rest/private/*`
-exigent une session ou un JWT, et le présenter en `Bearer` répond `HTTP 403`.
+The `authToken` visible in the database **is not** a login credential: the `/rest/private/*` routes require a
+session or a JWT, and presenting it as a `Bearer` answers `HTTP 403`.
 
-### Fichier `packages.yaml`
+### The `packages.yaml` file
 
-Copiez [packages.yaml.example](packages.yaml.example) et adaptez-le. Le suivi est **explicitement déclaratif** :
-seuls les paquets listés sont pris en compte, jamais l'intégralité du dépôt F-Droid. Un paquet retiré du
-fichier est retiré du suivi à l'exécution suivante.
+Copy [packages.yaml.example](packages.yaml.example) and adapt it. Tracking is **explicitly declarative**: only
+the packages listed are taken into account, never the whole F-Droid repository. A package removed from the file
+stops being tracked on the next run.
 
-Le fichier peut aussi être écrit en JSON : YAML 1.2 étant un sur-ensemble de JSON, un `.json` est chargé sans
-conversion. Pointez simplement `FHM_PACKAGES_FILE` dessus.
+The file can also be written in JSON: since YAML 1.2 is a superset of JSON, a `.json` file is loaded without
+conversion. Simply point `FHM_PACKAGES_FILE` at it.
 
 ```yaml
 repo:
@@ -91,23 +90,23 @@ packages:
   - pkg: org.videolan.vlc
 ```
 
-| Clé | Portée | Rôle |
+| Key | Scope | Role |
 | --- | --- | --- |
-| `repo.url` | globale | Dépôt F-Droid par défaut |
-| `repo.fingerprint` | globale | Empreinte du dépôt — déclarée mais **pas encore vérifiée**, voir plus bas |
-| `auto_approve` | défaut ou paquet | Rattacher automatiquement la nouvelle version aux configurations — `false` par défaut |
-| `target_abis` | défaut ou paquet | ABI à publier, par ordre de préférence — défaut `[arm64-v8a]` |
-| `blocked_anti_features` | défaut ou paquet | Anti-fonctionnalités écartant une version — vide par défaut |
-| `paused` | paquet | Suspendre le suivi sans retirer la déclaration |
-| `repo_url` | paquet | Dépôt spécifique à ce paquet |
+| `repo.url` | global | Default F-Droid repository |
+| `repo.fingerprint` | global | Repository fingerprint — declared but **not verified yet**, see below |
+| `auto_approve` | default or package | Link the new version to the configurations automatically — `false` by default |
+| `target_abis` | default or package | ABIs to publish, in order of preference — default `[arm64-v8a]` |
+| `blocked_anti_features` | default or package | Anti-features that discard a version — empty by default |
+| `paused` | package | Suspend tracking without removing the declaration |
+| `repo_url` | package | Repository specific to this package |
 
-## Utilisation
+## Usage
 
 ```bash
 poetry run fhm status
 ```
 
-La commande confronte `packages.yaml` aux applications déclarées dans Headwind :
+The command matches `packages.yaml` against the applications declared in Headwind:
 
 ```
 Applications Headwind: 4
@@ -123,43 +122,43 @@ Paquets suivis: 4
                              ajouter l'application dans Headwind avant de la suivre
 ```
 
-| Statut | Signification | Action attendue |
+| Status | Meaning | Expected action |
 | --- | --- | --- |
-| `OK` | Une seule application Headwind porte ce package | aucune |
-| `EN PAUSE` | Suivi suspendu par `paused: true` | aucune |
-| `ABSENT DE HEADWIND` | Aucune application ne porte ce package | ajouter l'application dans Headwind |
-| `AMBIGU` | Plusieurs applications portent ce package | retirer le doublon, ou ne pas suivre ce paquet |
+| `OK` | A single Headwind application carries this package | none |
+| `EN PAUSE` | Tracking suspended by `paused: true` | none |
+| `ABSENT DE HEADWIND` | No application carries this package | add the application in Headwind |
+| `AMBIGU` | Several applications carry this package | remove the duplicate, or do not track this package |
 
-Un package `AMBIGU` n'est jamais résolu automatiquement : associer la mauvaise application ferait publier
-une version sur le mauvais enregistrement.
+An `AMBIGU` package is never resolved automatically: associating the wrong application would publish a version
+on the wrong record.
 
-`paused: true` supprime toute alerte pour ce paquet : il n'est jamais comptabilisé comme bloquant, même s'il
-est absent de Headwind ou ambigu. Le détail affiché précise alors qu'il n'est pas résolu. Mettre un paquet en
-pause est donc bien une mise en sourdine complète, et non un simple report de traitement.
+`paused: true` silences every alert for this package: it is never counted as blocking, even if it is absent
+from Headwind or ambiguous. The details displayed then state that it is not resolved. Pausing a package is
+therefore a complete mute, not a mere postponement.
 
 ### Options
 
-| Option | Rôle |
+| Option | Role |
 | --- | --- |
-| `--json` | Sortie machine, exploitable par un outil de supervision |
-| `--show-untracked` | Liste les applications Headwind absentes de `packages.yaml` |
+| `--json` | Machine-readable output, usable by a monitoring tool |
+| `--show-untracked` | Lists the Headwind applications missing from `packages.yaml` |
 
-### Codes de sortie
+### Exit codes
 
-| Code | Signification |
+| Code | Meaning |
 | --- | --- |
-| `0` | Tous les paquets suivis sont résolus |
-| `1` | Au moins un paquet est `ABSENT DE HEADWIND` ou `AMBIGU` |
-| `2` | Erreur de configuration, accès refusé, ou Headwind injoignable |
+| `0` | All the tracked packages are resolved |
+| `1` | At least one package is `ABSENT DE HEADWIND` or `AMBIGU` |
+| `2` | Configuration error, access denied, or Headwind unreachable |
 
-### Plan de mise à jour
+### Update plan
 
 ```bash
 poetry run fhm sync --dry-run
 ```
 
-La commande récupère l'index F-Droid, résout la version candidate de chaque paquet suivi et la compare à
-celle publiée dans Headwind. **`--dry-run` n'écrit rien dans Headwind** — c'est le mode par défaut.
+The command fetches the F-Droid index, resolves the candidate version of each tracked package and compares it
+with the one published in Headwind. **`--dry-run` writes nothing to Headwind** — it is the default mode.
 
 ```
 Index F-Droid: 3 paquet(s) suivi(s), timestamp 1789478586569 (source CACHE)
@@ -175,29 +174,29 @@ Index F-Droid: 3 paquet(s) suivi(s), timestamp 1789478586569 (source CACHE)
                              aucune version pour arm64-v8a (disponibles: armeabi-v7a)
 ```
 
-| Statut | Signification |
+| Status | Meaning |
 | --- | --- |
-| `MISE A JOUR` | Une version plus récente est disponible sur F-Droid |
-| `A JOUR` | Headwind porte déjà la version candidate |
-| `REFUS` | Signataire divergent, ABI indisponible, ou anti-fonctionnalité bloquée |
-| `ABSENT DE F-DROID` | Le paquet n'existe pas dans le dépôt |
-| `IGNORE` | Paquet en pause, ou non résolu dans Headwind (voir `status`) |
+| `MISE A JOUR` | A newer version is available on F-Droid |
+| `A JOUR` | Headwind already carries the candidate version |
+| `REFUS` | Signer mismatch, unavailable ABI, or blocked anti-feature |
+| `ABSENT DE F-DROID` | The package does not exist in the repository |
+| `IGNORE` | Package paused, or not resolved in Headwind (see `status`) |
 
-La seule écriture est locale : le signataire est épinglé à la première résolution réussie, et ne peut plus
-être écrasé ensuite. Une divergence ultérieure produit un `REFUS`, car Android rejette toute mise à jour
-signée par une autre clé.
+The only write is local: the signer is pinned on the first successful resolution, and can no longer be
+overwritten afterwards. A later mismatch produces a `REFUS`, since Android rejects any update signed with
+another key.
 
-Le premier appel télécharge l'index complet (19 Mo en gzip) ; les suivants repartent du cache projeté, qui
-ne conserve que les paquets suivis — 552 ko pour trois paquets, contre 60 Mo pour l'index entier.
+The first call downloads the full index (19 MB gzipped); the following ones start from the projected cache,
+which only keeps the tracked packages — 552 kB for three packages, against 60 MB for the whole index.
 
-### Vérification des APK
+### APK verification
 
 ```bash
 poetry run fhm sync --dry-run --verify-apk
 ```
 
-Sans cette option, aucun APK n'est téléchargé : `sync --dry-run` ne lit que des métadonnées. Avec elle, les
-APK des paquets à mettre à jour sont téléchargés en flux et leur empreinte sha256 comparée à celle de l'index.
+Without this option, no APK is downloaded: `sync --dry-run` only reads metadata. With it, the APKs of the
+packages to update are streamed and their sha256 hash compared with the one in the index.
 
 ```
   org.vi_server.red_screen  MISE A JOUR
@@ -207,20 +206,20 @@ APK des paquets à mettre à jour sont téléchargés en flux et leur empreinte 
 APK verifies: 1, en echec: 0, telecharges: 17.2 ko, reutilises: 0 o
 ```
 
-Les APK sont conservés sous `FHM_CACHE_DIR/apk/<paquet>/<versionCode>-<abi>.apk` et réutilisés tant que leur
-empreinte reste valable — un fichier altéré est retéléchargé. Une empreinte divergente à la source refuse le
-paquet et **ne laisse aucun fichier** sur disque. La taille annoncée par l'index plafonne le transfert, ce qui
-évite qu'un miroir défaillant remplisse le cache.
+The APKs are kept under `FHM_CACHE_DIR/apk/<package>/<versionCode>-<abi>.apk` and reused as long as their
+hash remains valid — a tampered file is downloaded again. A hash mismatch at the source rejects the package and
+**leaves no file** on disk. The size announced by the index caps the transfer, which keeps a faulty mirror from
+filling the cache.
 
-### Publication dans Headwind
+### Publishing to Headwind
 
 ```bash
 poetry run fhm sync --apply
 ```
 
-`--apply` crée dans Headwind une version pointant directement vers l'URL du dépôt F-Droid. **Les appareils
-téléchargent eux-mêmes l'APK depuis `f-droid.org`** : c'est le mode de distribution retenu, et il suppose
-que le parc y a un accès sortant. Headwind n'hébergera jamais les APK.
+`--apply` creates in Headwind a version pointing directly to the URL of the F-Droid repository. **The devices
+download the APK from `f-droid.org` themselves**: this is the chosen distribution mode, and it assumes the fleet
+has outgoing access to it. Headwind will never host the APKs.
 
 ```
   org.videolan.vlc 3.7.1: created - 2 configuration(s) concernee(s), latestVersion bascule
@@ -230,46 +229,45 @@ que le parc y a un accès sortant. Headwind n'hébergera jamais les APK.
 version sans autre action.
 ```
 
-| Résultat | Signification |
+| Outcome | Meaning |
 | --- | --- |
-| `created` | La version existe dans Headwind, `last_created_version_code` est enregistré |
-| `blocked` | Une version Headwind porte déjà ce nom : la créer la réécrirait en place, rien n'est écrit |
-| `rewritten` | Headwind a répondu avec une version qui existait déjà : il l'a réécrite en place au lieu d'en créer une |
-| `skipped` | APK non vérifié, version déjà créée, application non résolue, ou ABI sans champ Headwind |
-| `failed` | Versions ou configurations illisibles (création annulée), ou création refusée par Headwind |
+| `created` | The version exists in Headwind, `last_created_version_code` is recorded |
+| `blocked` | A Headwind version already carries this name: creating it would rewrite it in place, nothing is written |
+| `rewritten` | Headwind answered with a version that already existed: it rewrote it in place instead of creating one |
+| `skipped` | APK not verified, version already created, application not resolved, or ABI without a Headwind field |
+| `failed` | Unreadable versions or configurations (creation cancelled), or creation refused by Headwind |
 
-Une réponse acceptée mais inexploitable compte comme `created` : Headwind a écrit, seul l'identifiant
-renvoyé manque. La traiter comme un refus ferait republier la version à chaque exécution.
+A response that is accepted but unusable counts as `created`: Headwind did write, only the returned id is
+missing. Treating it as a refusal would republish the version on every run.
 
-Cinq garde-fous encadrent l'écriture :
+Five safeguards frame the write:
 
-- **La vérification des APK est imposée** : `--apply` active `--verify-apk` d'office, et un artefact non
-  vérifié n'est jamais publié. Publier une URL sans avoir constaté l'empreinte des octets servis serait une
-  affirmation d'intégrité sans fondement.
-- **Les configurations sont lues avant la création**, car une configuration marquée `autoUpdate` bascule dès
-  l'insertion et l'état antérieur cesse alors d'être observable.
-- **La création est idempotente** côté service : `last_created_version_code` empêche de republier la même
-  version, Headwind ne la refusant pas de lui-même.
-- **`latestVersion` est relu après la création.** S'il n'a pas basculé, Headwind n'a rien propagé — son
-  classement de versions est textuel — et le rattachement explicite de l'itération 6 devient nécessaire.
-  Les exécutions suivantes continuent de le signaler (`rattachement explicite requis`) au lieu de retomber
-  dans un `skipped` muet.
-- **Une version du même nom n'est jamais réécrite.** Headwind ne crée pas une version dont le nom existe
-  déjà : il réécrit l'existante en place, liens aux configurations compris, et ses appareils la réinstallent
-  sans approbation. Le service relit donc les versions juste avant l'écriture et bloque la publication
-  (`blocked`) quel que soit `auto_approve` ; `--dry-run` signale déjà le conflit. Le conflit se lève dans
-  Headwind : modifier soi-même la version existante, ou la renommer ou la supprimer pour que le service
-  crée la nouvelle. Le détail figure dans la [conception](docs/architecture.md#déduplication-par-nom-de-version).
+- **APK verification is enforced**: `--apply` turns `--verify-apk` on automatically, and an unverified artefact
+  is never published. Publishing a URL without having checked the hash of the bytes served would be an
+  unfounded integrity claim.
+- **The configurations are read before the creation**, since a configuration marked `autoUpdate` switches on
+  insertion, and the previous state then stops being observable.
+- **Creation is idempotent** on the service side: `last_created_version_code` prevents the same version from
+  being published again, since Headwind does not refuse it on its own.
+- **`latestVersion` is read again after the creation.** If it has not switched, Headwind propagated nothing —
+  its version ranking is textual — and the explicit linking of iteration 6 becomes necessary. The following
+  runs keep flagging it (`rattachement explicite requis`) instead of falling back to a silent `skipped`.
+- **A version with the same name is never rewritten.** Headwind does not create a version whose name already
+  exists: it rewrites the existing one in place, configuration links included, and its devices reinstall it
+  without approval. The service therefore reads the versions again right before the write and blocks the
+  publication (`blocked`) whatever `auto_approve` says; `--dry-run` already flags the conflict. The conflict is
+  resolved in Headwind: edit the existing version yourself, or rename or delete it so that the service creates
+  the new one. The details are in the [design](docs/architecture.md#deduplication-by-version-name).
 
-> Cette commande n'a jamais été exécutée contre une instance Headwind réelle. Elle est validée face à un
-> serveur simulé. La valeur de `autoUpdate` sur les configurations du parc reste inconnue : tant qu'elle
-> n'est pas vérifiée, considérer qu'une création de version peut déclencher un déploiement immédiat. Premier
-> usage recommandé : une instance de recette, un seul paquet sans conséquence.
+> This command has never been run against a real Headwind instance. It is validated against a simulated server.
+> The value of `autoUpdate` on the configurations of the fleet remains unknown: until it is checked, assume that
+> creating a version may trigger an immediate deployment. Recommended first use: a staging instance, a single
+> package without consequence.
 
-### Rattachement aux configurations
+### Linking to the configurations
 
-Une fois la version créée, `--apply` la rattache aux configurations qui installaient déjà l'application,
-à condition que le paquet porte `auto_approve: true`.
+Once the version is created, `--apply` links it to the configurations that already installed the application,
+provided the package carries `auto_approve: true`.
 
 ```
   org.videolan.vlc: linked - 2 configuration(s) rattachee(s), notification demandee
@@ -279,42 +277,41 @@ Notification demandee: les appareils ne la recevront que si le service push est 
 leur prochaine synchronisation.
 ```
 
-Le rattachement ne dépend pas du résultat du plan mais d'un seul critère d'état : une version créée et non
-encore rattachée. La même règle traite donc ce qui vient d'être publié et ce qu'une exécution précédente a
-laissé en suspens — un paquet dont Headwind n'avait pas adopté la version est rattrapé au passage suivant.
+Linking does not depend on the outcome of the plan but on a single state criterion: a version created and not
+linked yet. The same rule therefore handles what has just been published and what a previous run left pending —
+a package whose version Headwind had not adopted is caught up on the next pass.
 
-| Résultat | Signification |
+| Outcome | Meaning |
 | --- | --- |
-| `linked` | Les configurations pointent sur la nouvelle version, notification demandée |
-| `skipped` | `auto_approve: false`, ou aucune configuration n'installe cette application |
-| `failed` | Version introuvable dans Headwind, liens illisibles, ou rattachement refusé |
+| `linked` | The configurations point to the new version, notification requested |
+| `skipped` | `auto_approve: false`, or no configuration installs this application |
+| `failed` | Version not found in Headwind, unreadable links, or linking refused |
 
-Trois garanties encadrent l'écriture :
+Three guarantees frame the write:
 
-- **Les entrées sont réémises telles quelles.** L'API exige que chaque lien lui revienne intact ; le service
-  les lit donc sans les typer, pour ne perdre aucun champ et ne pas convertir `versionText`, entier côté
-  serveur, en chaîne. Seuls `action` et `notify` sont posés.
-- **Le lien n'est posé que là où l'application est installée.** Headwind ne reporte pas l'action d'une
-  version à la suivante : une version neuve revient « à ne pas installer » dans toutes les configurations.
-  Le service lit donc les configurations où une version de l'application est installée et n'émet de lien
-  que pour elles ; une désinstallation demandée sur la version est respectée. Comme le panneau, il n'émet
-  jamais de lien « ne pas installer », que le serveur insérerait tel quel.
-- **La notification est demandée, pas constatée.** `notify: true` ne déclenche un push que si le service de
-  notification est configuré sur l'instance ; sinon les appareils prennent la mise à jour à leur prochaine
-  synchronisation. L'API ne permet pas de distinguer les deux cas.
+- **The entries are sent back as they are.** The API requires each link to come back intact; the service
+  therefore reads them without typing them, so as to lose no field and not to convert `versionText`, an integer
+  server-side, into a string. Only `action` and `notify` are set.
+- **The link is only set where the application is installed.** Headwind does not carry the action over from one
+  version to the next: a new version comes back as "do not install" in every configuration. The service
+  therefore reads the configurations where a version of the application is installed and only sends links for
+  them; an uninstall requested on the version is respected. Like the panel, it never sends a "do not install"
+  link, which the server would insert as it is.
+- **The notification is requested, not observed.** `notify: true` only triggers a push if the notification
+  service is configured on the instance; otherwise the devices pick up the update at their next sync. The API
+  does not make it possible to tell the two cases apart.
 
-Avec `auto_approve: false` — le défaut — la version est créée mais laissée non rattachée, et signalée à
-chaque exécution. L'approbation se fait alors dans l'interface Headwind : le service ne fournit pas de
-commande d'approbation.
+With `auto_approve: false` — the default — the version is created but left unlinked, and flagged on every run.
+Approval then happens in the Headwind interface: the service provides no approval command.
 
-### Rapport et supervision
+### Reporting and monitoring
 
 ```bash
 poetry run fhm report
 ```
 
-Restitue l'historique des exécutions et les points d'attention, sans aucun appel réseau — la commande ne lit
-que la base d'état locale.
+Shows the run history and the points needing attention, without any network call — the command only reads the
+local state database.
 
 ```
 Derniere execution #2: OK
@@ -330,22 +327,22 @@ Historique (2 derniere(s) execution(s)):
 1 paquet(s) suivi(s)
 ```
 
-Un paquet en attente de rattachement reste affiché même lorsque la dernière exécution s'est bien passée :
-c'est un état durable, que seul un opérateur peut lever. Les options sont `--runs N` et `--json`, et le code
-de sortie vaut `1` si la dernière exécution a produit des erreurs.
+A package awaiting linking remains displayed even when the last run went well: it is a durable state, which
+only an operator can clear. The options are `--runs N` and `--json`, and the exit code is `1` if the last run
+produced errors.
 
-### Journal structuré
+### Structured log
 
-Chaque exécution de `sync` émet sur **stderr** une ligne JSON par erreur, puis une ligne de synthèse :
+Each `sync` run emits on **stderr** one JSON line per error, then a summary line:
 
 ```json
 {"run_id": 3, "packages": 3, "updates": 1, "rejections": 1, "versions_created": 0, "versions_rewritten": 0, "publications_blocked": 0, "versions_linked": 0, "awaiting_approval": 0, "errors": 1, "event": "sync.finished", "level": "info", "timestamp": "2026-09-16T14:38:54Z"}
 ```
 
-Le rapport `--json` sort sur **stdout**, le journal sur **stderr** : sous un timer, `journalctl` collecte le
-second sans jamais rendre le premier inanalysable.
+The `--json` report goes to **stdout**, the log to **stderr**: under a timer, `journalctl` collects the latter
+without ever making the former impossible to parse.
 
-### Conteneur
+### Container
 
 ```bash
 docker build -t fdroid-headwind-mirror .
@@ -359,34 +356,33 @@ docker run --rm \
   fdroid-headwind-mirror sync --apply
 ```
 
-L'image tourne sous un utilisateur non privilégié et son répertoire de travail est `/data`, où les chemins
-relatifs par défaut (`state.db`, `.cache`) se résolvent. **Ce volume doit être persistant** : perdre
-`state.db`, c'est perdre les signataires épinglés et les deux compteurs de progression, donc republier
-l'ensemble des paquets suivis à l'exécution suivante.
+The image runs as an unprivileged user and its working directory is `/data`, where the relative default paths
+(`state.db`, `.cache`) resolve. **This volume must be persistent**: losing `state.db` means losing the pinned
+signers and the two progress counters, hence republishing every tracked package on the next run.
 
-Sans argument, l'image exécute `sync --dry-run` : une image démarrée par mégarde n'écrit rien dans Headwind.
+Without arguments, the image runs `sync --dry-run`: an image started by mistake writes nothing to Headwind.
 
-### Publication de l'image
+### Publishing the image
 
-Un tag de version publie l'image sur GHCR :
+A version tag publishes the image to GHCR:
 
 ```bash
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-Le workflow refuse de publier si le tag ne correspond pas à la version déclarée dans `pyproject.toml` : une
-image mal étiquetée serait déployée sous un numéro qui ne désigne pas son contenu. Les tags produits sont
-`0.1.0`, `0.1` et `latest`.
+The workflow refuses to publish if the tag does not match the version declared in `pyproject.toml`: a
+mislabelled image would be deployed under a number that does not designate its content. The tags produced are
+`0.1.0`, `0.1` and `latest`.
 
-La publication est volontairement liée aux tags et non aux fusions sur `main` : le déploiement épingle une
-version exacte, et un tag mouvant sur un parc qui se met à jour seul n'est pas souhaitable.
+Publication is deliberately tied to tags and not to merges into `main`: the deployment pins an exact version,
+and a moving tag on a fleet that updates itself is not desirable.
 
-À la **première** publication, le package GHCR est privé : le rendre public dans les paramètres du dépôt,
-sinon l'hôte devra s'authentifier pour le tirer.
+On the **first** publication, the GHCR package is private: make it public in the repository settings, otherwise
+the host will have to authenticate to pull it.
 
-### Exécution quotidienne
+### Daily run
 
-Le service n'embarque pas d'ordonnanceur. Les unités d'exemple sont dans [deploy/](deploy) :
+The service embeds no scheduler. The sample units are in [deploy/](deploy):
 
 ```bash
 sudo install -m 0644 deploy/fdroid-headwind-mirror.{service,timer} /etc/systemd/system/
@@ -394,59 +390,56 @@ sudo install -D -m 0640 deploy/env.example /etc/fdroid-headwind-mirror/env
 sudo systemctl enable --now fdroid-headwind-mirror.timer
 ```
 
-Trois points que les unités traitent explicitement :
+Three points the units handle explicitly:
 
-- **Le jeton vit dans `EnvironmentFile`**, jamais dans l'unité — celle-ci est lisible par tous.
-- **`WorkingDirectory` est obligatoire** : `packages.yaml`, `state.db` et le cache ont des chemins relatifs
-  par défaut.
-- **`RandomizedDelaySec=2h`** évite qu'un parc de services frappe `f-droid.org` à la même seconde.
+- **The token lives in `EnvironmentFile`**, never in the unit — the unit is world-readable.
+- **`WorkingDirectory` is mandatory**: `packages.yaml`, `state.db` and the cache have relative paths by default.
+- **`RandomizedDelaySec=2h`** keeps a fleet of services from hitting `f-droid.org` in the same second.
 
-L'historique s'accumule à chaque exécution. La purge est une commande explicite, jamais un effet de bord
-d'une exécution planifiée :
+History accumulates on every run. Pruning is an explicit command, never a side effect of a scheduled run:
 
 ```bash
 poetry run fhm prune --days 90
 ```
 
-Elle demande confirmation avant de supprimer, sauf avec `--yes`.
+It asks for confirmation before deleting, unless `--yes` is given.
 
-### Chaîne de confiance et limite connue
+### Chain of trust and known limit
 
-| Maillon | Vérification |
+| Link | Verification |
 | --- | --- |
-| `entry.json` → index / diff | Empreinte sha256 comparée avant tout parsing |
-| index → APK | Empreinte sha256 et taille comparées pendant le téléchargement |
-| APK → signataire | Le signataire déclaré par l'index porte sur ces octets exacts, épinglé au premier suivi |
-| dépôt → `entry.json` | **Non vérifié** — voir ci-dessous |
+| `entry.json` → index / diff | sha256 hash compared before any parsing |
+| index → APK | sha256 hash and size compared during the download |
+| APK → signer | The signer declared by the index applies to these exact bytes, pinned when tracking starts |
+| repository → `entry.json` | **Not verified** — see below |
 
-Le champ `repo.fingerprint` de `packages.yaml` n'est **pas encore contrôlé** : le service télécharge
-`entry.json`, qui n'est pas signé, et non `entry.jar`. La protection actuelle repose sur HTTPS et sur la
-chaîne d'empreintes ci-dessus. Valider le fingerprint demanderait de vérifier une signature JAR, ce qui fera
-l'objet d'un travail dédié.
+The `repo.fingerprint` field of `packages.yaml` is **not checked yet**: the service downloads `entry.json`,
+which is not signed, and not `entry.jar`. The current protection relies on HTTPS and on the hash chain above.
+Validating the fingerprint would require checking a JAR signature, which will be the subject of dedicated work.
 
-Le certificat des APK n'est volontairement pas ré-extrait : si les octets correspondent à l'empreinte de
-l'index, l'affirmation de signataire de l'index porte sur ces octets. Re-dériver le certificat n'apporterait
-de garantie que contre un index falsifié — lequel déclarerait de toute façon le signataire de l'APK falsifié.
+The APK certificate is deliberately not re-extracted: if the bytes match the hash in the index, the signer
+assertion of the index applies to these bytes. Re-deriving the certificate would only guard against a forged
+index — which would declare the signer of the forged APK anyway.
 
-## Inventaire du parc
+## Fleet inventory
 
-Headwind ne collecte pas l'architecture CPU des appareils. Pour déterminer les ABI à publier, l'outil
-d'inventaire agrège les modèles et versions Android enrôlés :
+Headwind does not collect the CPU architecture of the devices. To determine which ABIs to publish, the
+inventory tool aggregates the enrolled models and Android versions:
 
 ```bash
 poetry run python tools/parc_inventory.py
 ```
 
-Il utilise les mêmes variables d'environnement que la commande principale. L'architecture se déduit ensuite
-du modèle, ou se lit directement sur un appareil :
+It uses the same environment variables as the main command. The architecture is then deduced from the model,
+or read directly on a device:
 
 ```bash
 adb shell getprop ro.product.cpu.abilist
 ```
 
-Le parc visé ici est homogène en `arm64-v8a`.
+The fleet targeted here is uniformly `arm64-v8a`.
 
-## Développement
+## Development
 
 ```bash
 poetry run pytest
@@ -454,5 +447,5 @@ poetry run pylint .
 poetry run black --check .
 ```
 
-La suite de tests est intégralement hors ligne : les échanges HTTP sont simulés par `httpx.MockTransport`,
-aucune instance Headwind n'est nécessaire.
+The test suite is fully offline: HTTP exchanges are simulated with `httpx.MockTransport`, and no Headwind
+instance is needed.
