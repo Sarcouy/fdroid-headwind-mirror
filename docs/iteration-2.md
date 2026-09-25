@@ -1,57 +1,56 @@
-# Itération 2 — Client F-Droid, résolution de version, `sync --dry-run`
+# Iteration 2 — F-Droid client, version resolution, `sync --dry-run`
 
-> **Statut : livrée.** Une découverte en cours d'implémentation a modifié la règle de sélection décrite en
-> §4.2 : le champ `releaseChannels` de l'index marque les préversions, et les écarter avant de comparer les
-> `versionCode` reproduit exactement le `suggestedVersionCode` de F-Droid (vérifié sur 12 paquets). Sans ce
-> filtre, Nextcloud aurait été publié en `35.0.0 RC2` au lieu de `34.1.1`. La notion de « groupe de versions »
-> envisagée en §4.2 s'est révélée inutile : filtrer les versions offrant l'ABI cible puis prendre le
-> `versionCode` maximal suffit, et supprime le besoin de regrouper par `versionName`.
+> **Status: delivered.** A discovery made during implementation changed the selection rule described in §4.2:
+> the `releaseChannels` field of the index marks the pre-releases, and discarding them before comparing the
+> `versionCode` values reproduces F-Droid's `suggestedVersionCode` exactly (checked on 12 packages). Without this
+> filter, Nextcloud would have been published as `35.0.0 RC2` instead of `34.1.1`. The notion of a "version
+> group" considered in §4.2 turned out to be useless: filtering the versions that offer the target ABI and
+> taking the highest `versionCode` is enough, and removes the need to group by `versionName`.
 >
-> **Document d'archive.** L'option `mirror` qui apparaît dans les exemples de configuration n'existe plus :
-> Headwind n'hébergera jamais les APK et l'itération 5 est abandonnée (architecture §8).
+> **Archive document.** The `mirror` option that appears in the configuration examples no longer exists:
+> Headwind will never host the APKs, and iteration 5 is abandoned (architecture §8).
 
 ## TL;DR
 
-Ajouter la moitié F-Droid du service : récupérer l'index du dépôt à moindre coût, en déduire pour chaque
-paquet suivi la version candidate **en tenant compte de l'architecture**, et afficher le plan de mise à jour.
-Aucune écriture dans Headwind, aucun APK téléchargé.
+Add the F-Droid half of the service: fetch the repository index as cheaply as possible, derive from it the
+candidate version of each tracked package **taking the architecture into account**, and display the update
+plan. No write to Headwind, no APK downloaded.
 
-Critère de fin : `poetry run fhm sync --dry-run` dit, pour chaque paquet suivi, ce qu'il publierait et
-pourquoi — ou pourquoi il ne publierait rien.
-
----
-
-## 1. Périmètre
-
-### Dans l'itération
-
-| Élément | Contenu |
-| --- | --- |
-| Client F-Droid | `entry.json` conditionnel, index complet, diffs incrémentaux, vérification sha256 |
-| Cache d'index | Index local réutilisé d'une exécution à l'autre |
-| Résolution de version | Choix de la ou des versions candidates, groupées par ABI |
-| Commande `sync --dry-run` | Affiche le plan, n'écrit rien |
-| Épinglage du signataire | Capture de `expected_signer` à la première résolution réussie |
-
-### Hors itération
-
-| Élément | Itération |
-| --- | --- |
-| Téléchargement de l'APK et vérification de son sha256 | 3 |
-| Refus effectif sur signataire divergent | 3 |
-| Création de version dans Headwind | 4 |
-| Envoi de l'APK (mode miroir) | 5 |
-| Rattachement aux configurations | 6 |
-
-Le signataire et les ABI sont **lus et affichés** dès cette itération, même si leur application n'intervient
-qu'en itération 3. C'est ce qui permet de découvrir un paquet problématique avant qu'un chemin d'écriture
-n'existe.
+Done when: `poetry run fhm sync --dry-run` says, for each tracked package, what it would publish and why — or
+why it would publish nothing.
 
 ---
 
-## 2. Le format de l'index
+## 1. Scope
 
-Structure réelle relevée sur `https://f-droid.org/repo/index-v2.json` :
+### In this iteration
+
+| Element | Content |
+| --- | --- |
+| F-Droid client | Conditional `entry.json`, full index, incremental diffs, sha256 check |
+| Index cache | Local index reused from one run to the next |
+| Version resolution | Choice of the candidate version or versions, grouped by ABI |
+| `sync --dry-run` command | Displays the plan, writes nothing |
+| Signer pinning | Capture of `expected_signer` on the first successful resolution |
+
+### Outside this iteration
+
+| Element | Iteration |
+| --- | --- |
+| APK download and sha256 check | 3 |
+| Actual rejection on a signer mismatch | 3 |
+| Version creation in Headwind | 4 |
+| APK upload (mirror mode) | 5 |
+| Linking to the configurations | 6 |
+
+The signer and the ABIs are **read and displayed** from this iteration on, even though they are only enforced
+in iteration 3. This is what makes it possible to discover a problematic package before any write path exists.
+
+---
+
+## 2. The index format
+
+Actual structure observed on `https://f-droid.org/repo/index-v2.json`:
 
 ```json
 {
@@ -64,7 +63,7 @@ Structure réelle relevée sur `https://f-droid.org/repo/index-v2.json` :
         "lastUpdated": 1789400000000
       },
       "versions": {
-        "<sha256 de l'APK>": {
+        "<APK sha256>": {
           "added": 1789475328195,
           "file": { "name": "/org.videolan.vlc_13070106.apk", "sha256": "...", "size": 4069621 },
           "manifest": {
@@ -82,53 +81,52 @@ Structure réelle relevée sur `https://f-droid.org/repo/index-v2.json` :
 }
 ```
 
-Points à retenir pour l'implémentation :
+Points to keep in mind for the implementation:
 
-| Champ | Remarque |
+| Field | Note |
 | --- | --- |
-| clé de `versions` | Le sha256 de l'APK, pas un numéro de version |
-| `manifest.versionCode` | Entier, seule base de comparaison valable |
-| `manifest.signer.sha256` | **Tableau** — cardinalité 1 exigée (§4.3) |
-| `manifest.nativecode` | Absent pour un paquet pur Java ; liste d'ABI sinon |
-| `file.name` | Chemin relatif au dépôt : l'URL est `repo_url + file.name` |
-| `file.sha256` | Empreinte de l'APK, utilisée en itération 3 |
-| `antiFeatures` | Présent au niveau version ; base d'une politique de filtrage |
+| `versions` key | The sha256 of the APK, not a version number |
+| `manifest.versionCode` | Integer, the only valid basis for comparison |
+| `manifest.signer.sha256` | **Array** — cardinality 1 required (§4.3) |
+| `manifest.nativecode` | Missing for a pure Java package; a list of ABIs otherwise |
+| `file.name` | Path relative to the repository: the URL is `repo_url + file.name` |
+| `file.sha256` | Hash of the APK, used in iteration 3 |
+| `antiFeatures` | Present at the version level; basis for a filtering policy |
 
 ---
 
-## 3. Récupération de l'index
+## 3. Fetching the index
 
-### Stratégie en trois temps
+### Three-stage strategy
 
 ```mermaid
 flowchart TD
-    START["Début d'exécution"] --> ENTRY["GET entry.json<br/>If-None-Match sur l'ETag conservé"]
-    ENTRY -->|304 Not Modified| SKIP["Index local réutilisé"]
-    ENTRY -->|200| TS{"timestamp local<br/>présent dans entry.diffs ?"}
-    TS -->|oui| DIFF["GET diff/{timestamp}.json<br/>0,5 à 5,5 Mo"]
-    TS -->|non| FULL["GET index-v2.json<br/>19 Mo gzip"]
-    DIFF --> VERIFY["Vérifier sha256 vs entry.json"]
+    START["Start of the run"] --> ENTRY["GET entry.json<br/>If-None-Match on the stored ETag"]
+    ENTRY -->|304 Not Modified| SKIP["Local index reused"]
+    ENTRY -->|200| TS{"local timestamp<br/>present in entry.diffs?"}
+    TS -->|yes| DIFF["GET diff/{timestamp}.json<br/>0.5 to 5.5 MB"]
+    TS -->|no| FULL["GET index-v2.json<br/>19 MB gzip"]
+    DIFF --> VERIFY["Check sha256 against entry.json"]
     FULL --> VERIFY
-    VERIFY -->|divergent| ABORT["Abandon de l'exécution"]
-    VERIFY -->|conforme| MERGE["Fusion récursive<br/>null = suppression"]
-    MERGE --> PROJ["Projection sur les paquets suivis<br/>4 385 paquets → ceux de packages.yaml"]
-    PROJ --> CACHE["Écriture du cache local"]
-    SKIP --> RESOLVE["Résolution des versions"]
+    VERIFY -->|mismatch| ABORT["Run aborted"]
+    VERIFY -->|match| MERGE["Recursive merge<br/>null = deletion"]
+    MERGE --> PROJ["Projection onto the tracked packages<br/>4,385 packages → those in packages.yaml"]
+    PROJ --> CACHE["Local cache written"]
+    SKIP --> RESOLVE["Version resolution"]
     CACHE --> RESOLVE
 ```
 
-### Justification
+### Rationale
 
-Le dépôt officiel pèse 19 Mo en gzip et 60 Mo décompressé, pour 4 385 paquets. Le télécharger chaque jour
-afin de surveiller une dizaine de paquets est disproportionné, d'où le chemin conditionnel. Les diffs sont
-proposés sur une fenêtre de 14 jours (`maxAge`) : un service quotidien reste dans cette fenêtre, et le repli
-sur l'index complet ne survient qu'après une interruption prolongée.
+The official repository weighs 19 MB gzipped and 60 MB uncompressed, for 4,385 packages. Downloading it every
+day to watch a dozen packages is disproportionate, hence the conditional path. Diffs are offered over a 14-day
+window (`maxAge`): a daily service stays within that window, and the fallback to the full index only happens
+after a prolonged interruption.
 
-### Fusion d'un diff
+### Merging a diff
 
-Une valeur `null` signifie « supprimer cette clé ». Un diff observé retirait 158 versions de cette manière.
-Une fusion naïve par `dict.update` conserverait des versions retirées du dépôt et pourrait les proposer à la
-publication.
+A `null` value means "delete this key". One observed diff removed 158 versions this way. A naive merge with
+`dict.update` would keep versions removed from the repository and could offer them for publication.
 
 ```python
 def merge(base: dict, patch: dict) -> dict:
@@ -142,99 +140,100 @@ def merge(base: dict, patch: dict) -> dict:
     return base
 ```
 
-C'est le premier test à écrire pour ce module, avec un cas de suppression imbriquée.
+This is the first test to write for this module, with a nested deletion case.
 
-### Cache local : projeté sur les paquets suivis
+### Local cache: projected onto the tracked packages
 
-Le dépôt décrit 4 385 paquets, le service n'en suit qu'une poignée. L'index n'est donc **jamais conservé
-intégralement** : il est projeté sur les paquets déclarés dans `packages.yaml` immédiatement après la fusion,
-et seule cette projection est écrite sur disque.
+The repository describes 4,385 packages, and the service only tracks a handful of them. The index is therefore
+**never kept in full**: it is projected onto the packages declared in `packages.yaml` right after the merge,
+and only that projection is written to disk.
 
-Mesures pour 8 paquets suivis, sur l'index du 2026-09-16 :
+Measurements for 8 tracked packages, on the index of 2026-09-16:
 
-| Contenu conservé | Taille | Rapport |
+| Content kept | Size | Ratio |
 | --- | --- | --- |
-| Index complet | 60 Mo | référence |
-| Projection sur les 8 paquets suivis | 1,29 Mo | 1/46 |
-| Projection + champs utiles seulement | 115 ko | 1/518 |
+| Full index | 60 MB | reference |
+| Projection onto the 8 tracked packages | 1.29 MB | 1/46 |
+| Projection + useful fields only | 115 kB | 1/518 |
 
-La taille du cache dépend surtout du **nombre de versions historisées par paquet**, pas du nombre de paquets :
-une exécution réelle sur trois paquets (VLC, Nextcloud, Fennec) produit 552 ko, Fennec conservant à lui seul
-un historique important. Compter quelques centaines de kilo-octets, contre 60 Mo pour l'index entier.
+The cache size mostly depends on the **number of versions kept in the history of each package**, not on the
+number of packages: a real run on three packages (VLC, Nextcloud, Fennec) produces 552 kB, Fennec alone keeping
+a large history. Expect a few hundred kilobytes, against 60 MB for the whole index.
 
-#### Champs conservés
+#### Fields kept
 
-La projection retient explicitement :
+The projection explicitly keeps:
 
-| Niveau | Clés conservées |
+| Level | Keys kept |
 | --- | --- |
 | `metadata` | `preferredSigner`, `name`, `lastUpdated` |
 | version | `added`, `file`, `manifest`, `antiFeatures` |
 
-`manifest` est gardé entier : il porte `versionCode`, `versionName`, `nativecode`, `signer` et `usesSdk`,
-ce dernier servant à une éventuelle vérification de compatibilité SDK. Sont écartés les champs de présentation
-(`description`, `screenshots`, `icon`, `categories`) et les archives de sources (`src`, `whatsNew`).
+`manifest` is kept whole: it carries `versionCode`, `versionName`, `nativecode`, `signer` and `usesSdk`, the
+latter serving a possible SDK compatibility check. The presentation fields (`description`, `screenshots`,
+`icon`, `categories`) and the source archives (`src`, `whatsNew`) are discarded.
 
-Cette liste est explicite et non « tout sauf » : une itération ultérieure ayant besoin d'un champ absent doit
-l'ajouter ici, plutôt que de le découvrir manquant à l'exécution.
+This list is explicit, not "everything but": a later iteration that needs a missing field must add it here,
+rather than find out at run time that it is missing.
 
-#### Invalidation quand la liste de suivi s'élargit
+#### Invalidation when the tracking list grows
 
-Un cache projeté ne contient que les paquets suivis au moment de son écriture. **Ajouter un paquet à
-`packages.yaml` le rend donc introuvable dans le cache**, et un diff ne comble pas le manque : un diff ne
-transporte que ce qui a changé dans le dépôt, pas ce qui manque localement.
+A projected cache only contains the packages tracked when it was written. **Adding a package to
+`packages.yaml` therefore makes it impossible to find in the cache**, and a diff does not fill the gap: a diff
+only carries what changed in the repository, not what is missing locally.
 
-Sans règle explicite, un paquet nouvellement suivi serait rapporté « absent de F-Droid » jusqu'au prochain
-rafraîchissement complet — indiscernable d'une véritable absence.
+Without an explicit rule, a newly tracked package would be reported as "absent from F-Droid" until the next
+full refresh — indistinguishable from a genuine absence.
 
-Règle retenue : l'ensemble des paquets suivis est persisté **avec** le cache. À chaque exécution :
+Rule adopted: the set of tracked packages is persisted **with** the cache. On every run:
 
-| Comparaison | Conséquence |
+| Comparison | Consequence |
 | --- | --- |
-| Ensemble inchangé ou réduit | Le cache reste valable, chemin conditionnel normal |
-| Ensemble élargi | Cache invalidé, rafraîchissement complet de l'index |
+| Set unchanged or reduced | The cache remains valid, normal conditional path |
+| Set extended | Cache invalidated, full refresh of the index |
 
-#### Coût mémoire
+#### Memory cost
 
-Le rafraîchissement complet charge l'index en mémoire avant projection : **pic mesuré à 482 Mo pour 0,5 s**.
-Il ne survient qu'au premier démarrage, après un élargissement de la liste, ou après plus de 14 jours
-d'interruption. Prévoir environ 1 Go de marge pour le processus sur ce chemin ; le régime nominal, lui, se
-contente du cache projeté.
+The full refresh loads the index in memory before the projection: **peak measured at 482 MB for 0.5 s**. It
+only happens on the first start, after the list has been extended, or after more than 14 days of interruption.
+Allow about 1 GB of headroom for the process on that path; the nominal regime, for its part, makes do with the
+projected cache.
 
-Ce coût ne justifie pas un analyseur en flux (`ijson`) : la dépendance et la complexité qu'il introduit ne se
-paient pas pour une demi-seconde sur un chemin rare.
+This cost does not justify a streaming parser (`ijson`): the dependency and the complexity it brings do not pay
+off for half a second on a rare path.
 
-Le cache vit hors de la base SQLite (fichier dédié sous `FHM_CACHE_DIR`), la base restant réservée à l'état
-métier.
+The cache lives outside the SQLite database (a dedicated file under `FHM_CACHE_DIR`), the database remaining
+reserved for the business state.
 
 ---
 
-## 4. Résolution de la version candidate
+## 4. Resolving the candidate version
 
-C'est le cœur de l'itération, et l'endroit où une erreur est la plus coûteuse : elle ne se manifesterait
-qu'à l'installation sur l'appareil.
+This is the core of the iteration, and the place where a mistake costs the most: it would only show up at
+installation time on the device.
 
-### 4.1 La forme du paquet se déduit de `nativecode`
+### 4.1 The package shape follows from `nativecode`
 
-Répartition mesurée sur les 4 385 paquets du dépôt, d'après la version au `versionCode` le plus élevé :
+Distribution measured over the 4,385 packages of the repository, based on the version with the highest
+`versionCode`:
 
-| Forme | Paquets | Part |
+| Shape | Packages | Share |
 | --- | --- | --- |
-| Pas de `nativecode` (pur Java) | 1 984 | 45 % |
-| `nativecode` multi-ABI | 1 882 | 43 % |
-| `nativecode` mono-ABI (publication par ABI) | 519 | 12 % |
+| No `nativecode` (pure Java) | 1,984 | 45% |
+| Multi-ABI `nativecode` | 1,882 | 43% |
+| Single-ABI `nativecode` (per-ABI publication) | 519 | 12% |
 
-Ces chiffres classent chaque paquet d'après sa version la plus récente, mais **la forme n'est pas une
-propriété stable du paquet** : un projet peut passer d'un APK universel à une publication par ABI, ou
-l'inverse. La forme est donc déterminée **par le seul groupe de versions candidat**, jamais par l'historique.
+These figures classify each package by its most recent version, but **the shape is not a stable property of
+the package**: a project can move from a universal APK to a per-ABI publication, or the other way round. The
+shape is therefore determined **by the candidate version group alone**, never by the history.
 
-Un changement de forme entre la version publiée dans Headwind et la version candidate fait basculer le
-drapeau `split` de l'enregistrement Headwind : `sync --dry-run` le signale explicitement, car c'est une
-modification de structure et pas une simple montée de version.
+A change of shape between the version published in Headwind and the candidate version flips the `split` flag of
+the Headwind record: `sync --dry-run` flags it explicitly, since it is a structural change and not a mere
+version bump.
 
-### 4.2 Le `versionCode` le plus élevé est un piège
+### 4.2 The highest `versionCode` is a trap
 
-Pour VLC, les quatre APK de la version 3.7.1 portent des `versionCode` distincts :
+For VLC, the four APKs of version 3.7.1 carry distinct `versionCode` values:
 
 | `versionCode` | `nativecode` |
 | --- | --- |
@@ -243,108 +242,109 @@ Pour VLC, les quatre APK de la version 3.7.1 portent des `versionCode` distincts
 | 13070106 | `arm64-v8a` |
 | 13070105 | `armeabi-v7a` |
 
-Le maximum global est l'APK **x86_64**. Sur les 519 paquets publiant par ABI, **238 ont un `versionCode`
-maximal qui n'est pas celui d'`arm64-v8a`** : le piège se déclenche donc dans près d'un cas sur deux.
+The overall maximum is the **x86_64** APK. Of the 519 packages publishing per ABI, **238 have a highest
+`versionCode` that is not the `arm64-v8a` one**: the trap therefore fires in nearly one case out of two.
 
-Ce n'est pas un défaut de F-Droid : son client lit l'index et filtre par l'ABI de l'appareil avant de
-comparer. En revanche, l'endpoint `GET /api/v1/packages/{pkg}` est inexploitable ici, car ses entrées ne
-portent que `versionName` et `versionCode` :
+This is not an F-Droid flaw: its client reads the index and filters by the ABI of the device before comparing.
+The `GET /api/v1/packages/{pkg}` endpoint, on the other hand, is unusable here, since its entries only carry
+`versionName` and `versionCode`:
 
 ```json
 { "suggestedVersionCode": 13070108,
   "packages": [ { "versionName": "3.7.1", "versionCode": 13070108 } ] }
 ```
 
-Aucune information d'architecture n'y figure, et son `suggestedVersionCode` désigne précisément l'APK x86_64
-sans que rien ne permette de le savoir. C'est la raison décisive de s'en tenir à l'index comme source unique.
+No architecture information appears there, and its `suggestedVersionCode` points precisely at the x86_64 APK
+with nothing to tell it apart. This is the decisive reason to stick to the index as the single source.
 
-L'algorithme groupe par ABI avant de comparer :
+The algorithm groups by ABI before comparing:
 
 ```mermaid
 flowchart TD
-    V["Versions du paquet"] --> F["Écarter les versions inexploitables<br/>signataire absent ou multiple"]
-    F --> SHAPE{"nativecode mono-ABI<br/>sur les versions récentes ?"}
-    SHAPE -->|non| UNI["Paquet universel<br/>retenir le versionCode max"]
-    SHAPE -->|oui| SPLIT["Paquet splitté"]
-    SPLIT --> PER["Pour chaque ABI ciblée :<br/>retenir le versionCode max de cette ABI"]
-    PER --> ARM{"au moins une ABI ARM<br/>disponible ?"}
-    ARM -->|non| REJECT["Refus : non déployable sur le parc"]
-    ARM -->|oui| CAND["Candidat splitté<br/>urlArmeabi + urlArm64"]
-    UNI --> CAND2["Candidat universel<br/>url"]
+    V["Versions of the package"] --> F["Discard the unusable versions<br/>signer missing or multiple"]
+    F --> SHAPE{"single-ABI nativecode<br/>on the recent versions?"}
+    SHAPE -->|no| UNI["Universal package<br/>keep the highest versionCode"]
+    SHAPE -->|yes| SPLIT["Split package"]
+    SPLIT --> PER["For each targeted ABI:<br/>keep the highest versionCode of that ABI"]
+    PER --> ARM{"at least one ARM ABI<br/>available?"}
+    ARM -->|no| REJECT["Rejected: cannot be deployed on the fleet"]
+    ARM -->|yes| CAND["Split candidate<br/>urlArmeabi + urlArm64"]
+    UNI --> CAND2["Universal candidate<br/>url"]
 ```
 
-### 4.3 Règles de refus
+### 4.3 Rejection rules
 
-| Situation | Décision |
+| Situation | Decision |
 | --- | --- |
-| Versions Headwind illisibles | Paquet ignoré, jamais présenté comme une mise à jour |
-| `signer.sha256` absent ou de cardinalité ≠ 1 | Version écartée |
-| Paquet splitté ne proposant aucune ABI de `target_abis` | Paquet refusé, alerte — 16 paquets du dépôt sont dans ce cas (§6) |
-| Signataire divergent de `expected_signer` | Signalé en itération 2, **refusé** en itération 3 |
-| `antiFeatures` bloquantes | Selon politique configurée (§6) |
+| Unreadable Headwind versions | Package skipped, never presented as an update |
+| `signer.sha256` missing or of cardinality ≠ 1 | Version discarded |
+| Split package offering no ABI from `target_abis` | Package rejected, alert — 16 packages of the repository are in this case (§6) |
+| Signer differing from `expected_signer` | Flagged in iteration 2, **rejected** in iteration 3 |
+| Blocking `antiFeatures` | According to the configured policy (§6) |
 
-Exiger exactement un signataire plutôt qu'arbitrer une liste est un choix délibéré : aucune des versions des
-4 385 paquets relevés n'en déclare plusieurs, donc la règle n'écarte rien en pratique et échoue bruyamment si
-le format évolue.
+Requiring exactly one signer rather than arbitrating a list is a deliberate choice: none of the versions of the
+4,385 packages surveyed declares several, so the rule discards nothing in practice and fails loudly if the
+format changes.
 
-La première règle mérite d'être explicitée, car elle porte sur l'itération 4. Une lecture Headwind en échec ne
-doit **jamais** être assimilée à « Headwind est en retard » : ne pas pouvoir comparer n'est pas constater un
-retard. Sans cette distinction, une simple erreur réseau déclencherait une publication une fois le chemin
-d'écriture en place. Le paquet est donc ignoré, avec un événement de niveau `ERROR` au journal.
+The first rule deserves to be spelled out, since it concerns iteration 4. A failed Headwind read must **never**
+be taken to mean "Headwind is behind": being unable to compare is not observing a lag. Without this distinction,
+a mere network error would trigger a publication once the write path is in place. The package is therefore
+skipped, with an `ERROR`-level event in the log.
 
-### 4.4 Correspondance des architectures
+### 4.4 Architecture mapping
 
-Headwind ne connaît que deux architectures : `Application.ARCH_ARMEABI = "armeabi"` et
+Headwind only knows two architectures: `Application.ARCH_ARMEABI = "armeabi"` and
 `Application.ARCH_ARM64 = "arm64"`.
 
-| ABI F-Droid | Champ Headwind |
+| F-Droid ABI | Headwind field |
 | --- | --- |
 | `arm64-v8a` | `urlArm64` |
 | `armeabi-v7a`, `armeabi` | `urlArmeabi` |
-| `x86`, `x86_64`, `mips`, `riscv64`, … | ignorées |
+| `x86`, `x86_64`, `mips`, `riscv64`, … | ignored |
 
-### 4.5 Repère de progression pour un paquet splitté
+### 4.5 Progress marker for a split package
 
-Un paquet splitté n'a pas un `versionCode` mais un par ABI. Le repère stocké dans `last_seen_version_code`
-est le `versionCode` de la **première ABI de `target_abis`**, c'est-à-dire l'ABI de référence déclarée par
-l'exploitant — et non le maximum des `versionCode` retenus.
+A split package has not one `versionCode` but one per ABI. The marker stored in `last_seen_version_code` is the
+`versionCode` of the **first ABI of `target_abis`**, that is the reference ABI declared by the operator — and
+not the maximum of the `versionCode` values selected.
 
-La raison est une interaction avec la configuration. Si le repère était le maximum, réduire `target_abis` de
-`[arm64-v8a, armeabi-v7a]` à `[arm64-v8a]` ferait *baisser* le repère dès lors que l'ABI retirée portait le
-`versionCode` le plus élevé. Un repère en recul produit soit une republication, soit un « rien à faire »
-injustifié, selon le sens de la comparaison. Or l'ordre relatif des `versionCode` entre ABI n'est pas
-normalisé : chez VLC `armeabi-v7a` est numéroté sous `arm64-v8a`, mais rien ne le garantit ailleurs.
+The reason is an interaction with the configuration. If the marker were the maximum, reducing `target_abis`
+from `[arm64-v8a, armeabi-v7a]` to `[arm64-v8a]` would make the marker *go down* whenever the removed ABI
+carried the highest `versionCode`. A marker going backwards produces either a republication or an unjustified
+"nothing to do", depending on the direction of the comparison. Yet the relative order of the `versionCode`
+values across ABIs is not standardised: at VLC, `armeabi-v7a` is numbered below `arm64-v8a`, but nothing
+guarantees it elsewhere.
 
-Ancrer le repère sur une ABI nommée le rend stable quand on élargit `target_abis`, et fait d'un rétrécissement
-un changement explicite et prévisible.
+Anchoring the marker to a named ABI keeps it stable when `target_abis` is extended, and turns a reduction into
+an explicit and predictable change.
 
-Si les `versionName` divergent entre ABI d'un même groupe, celui de l'ABI de référence fait foi — Headwind ne
-stocke qu'une chaîne de version par `ApplicationVersion`.
+If the `versionName` values differ between the ABIs of a same group, the one of the reference ABI prevails —
+Headwind only stores one version string per `ApplicationVersion`.
 
-Ce repère est avancé **dès la résolution**, avant la vérification d'intégrité de l'APK (itération 3). Une
-version dont le téléchargement échoue voit donc son repère progresser malgré tout. C'est cohérent avec sa
-définition — « dernière version observée sur F-Droid » — mais il ne doit jamais servir à décider d'une
-publication : ce rôle revient à `last_created_version_code` et `last_pushed_version_code`.
+This marker is advanced **as soon as the resolution happens**, before the integrity check of the APK
+(iteration 3). A version whose download fails therefore sees its marker move forward all the same. This is
+consistent with its definition — "last version seen on F-Droid" — but it must never be used to decide on a
+publication: that role belongs to `last_created_version_code` and `last_pushed_version_code`.
 
 ---
 
-## 5. Épinglage du signataire
+## 5. Signer pinning
 
-`expected_signer` est `NULL` pour toutes les lignes créées en itération 1. Cette itération comble l'écart
-entre cet état et l'application prévue en itération 3.
+`expected_signer` is `NULL` for all the rows created in iteration 1. This iteration bridges the gap between
+that state and the enforcement planned in iteration 3.
 
-| État | Comportement de `sync --dry-run` |
+| State | Behaviour of `sync --dry-run` |
 | --- | --- |
-| `expected_signer` à `NULL` | Affiche le signataire qui **serait** épinglé (`metadata.preferredSigner`, à défaut celui de la version candidate) et l'enregistre |
-| `expected_signer` renseigné et identique | Rien à signaler |
-| `expected_signer` renseigné et divergent | Alerte explicite ; en itération 2 le plan reste affiché, en itération 3 le paquet est refusé |
+| `expected_signer` at `NULL` | Displays the signer that **would** be pinned (`metadata.preferredSigner`, or failing that the one of the candidate version) and records it |
+| `expected_signer` set and identical | Nothing to report |
+| `expected_signer` set and different | Explicit alert; in iteration 2 the plan is still displayed, in iteration 3 the package is rejected |
 
-L'épinglage est la seule écriture de cette itération, et elle ne concerne que la base locale. Un `NULL` n'est
-jamais interprété comme une divergence.
+Pinning is the only write of this iteration, and it only concerns the local database. A `NULL` is never
+interpreted as a mismatch.
 
 ---
 
-## 6. Configuration ajoutée
+## 6. Added configuration
 
 ```yaml
 repo:
@@ -362,33 +362,33 @@ packages:
     target_abis: [arm64-v8a, armeabi-v7a]
 ```
 
-| Clé | Portée | Rôle |
+| Key | Scope | Role |
 | --- | --- | --- |
-| `target_abis` | défaut ou paquet | ABI à publier pour un paquet splitté, par ordre de préférence — la première sert aussi d'ABI de référence (§4.5) |
-| `blocked_anti_features` | défaut ou paquet | Anti-fonctionnalités dont la présence écarte une version |
+| `target_abis` | default or package | ABIs to publish for a split package, in order of preference — the first one also serves as the reference ABI (§4.5) |
+| `blocked_anti_features` | default or package | Anti-features whose presence discards a version |
 
-#### Valeur retenue pour ce parc
+#### Value chosen for this fleet
 
-Le parc est homogène en **`arm64-v8a`**, d'où la valeur par défaut `[arm64-v8a]` : une seule ABI publiée,
-donc un seul APK par version pour les paquets splittés, et un repère de progression non ambigu (§4.5).
+The fleet is uniformly **`arm64-v8a`**, hence the default value `[arm64-v8a]`: a single ABI published, so a
+single APK per version for the split packages, and an unambiguous progress marker (§4.5).
 
-Ce choix est peu coûteux : sur les 519 paquets publiant par ABI, **503 proposent un APK `arm64-v8a`**. Les
-16 restants — `com.pavelsof.wormhole` ou `com.github.andremiras.qrscan` par exemple — ne publient qu'en
-`armeabi-v7a` ou `x86_64` et seraient refusés.
+This choice costs little: of the 519 packages publishing per ABI, **503 offer an `arm64-v8a` APK**. The
+remaining 16 — `com.pavelsof.wormhole` or `com.github.andremiras.qrscan` for example — only publish for
+`armeabi-v7a` or `x86_64` and would be rejected.
 
-Pour ceux-là, l'exploitant peut déclarer un repli explicite au niveau du paquet, comme dans l'exemple
-ci-dessus. Ce repli reste une décision au cas par cas : un APK `armeabi-v7a` s'exécute sur la plupart des
-appareils `arm64-v8a` grâce à la compatibilité 32 bits, mais les SoC 64 bits récents ne la proposent plus
-toujours. Le service ne l'active donc jamais de lui-même.
+For those, the operator can declare an explicit fallback at the package level, as in the example above. This
+fallback remains a case-by-case decision: an `armeabi-v7a` APK runs on most `arm64-v8a` devices thanks to 32-bit
+compatibility, but recent 64-bit SoCs no longer always offer it. The service therefore never enables it on its
+own.
 
-`blocked_anti_features` est **vide par défaut**, délibérément. Bloquer `NonFreeNet` paraît raisonnable sur un
-parc d'entreprise, mais cette anti-fonctionnalité marque tout client d'un service en ligne : elle écarterait
-Nextcloud, pourtant présent dans l'exemple de configuration du projet. Le filtrage est donc une décision
-explicite de l'exploitant, pas un défaut qui écarte silencieusement des paquets qu'il a lui-même déclarés.
+`blocked_anti_features` is **empty by default**, deliberately. Blocking `NonFreeNet` seems reasonable on a
+corporate fleet, but this anti-feature marks any client of an online service: it would discard Nextcloud, even
+though it is in the project's sample configuration. Filtering is therefore an explicit decision of the
+operator, not a default that silently discards packages they declared themselves.
 
 ---
 
-## 7. Sortie attendue
+## 7. Expected output
 
 ```
 $ poetry run fhm sync --dry-run
@@ -419,79 +419,80 @@ Index F-Droid: 4385 paquets, timestamp 1789478586569 (diff applique, 552 ko)
 Aucune ecriture effectuee (--dry-run)
 ```
 
-Les options `--json` et les codes de sortie suivent la convention posée par `status` :
+The `--json` option and the exit codes follow the convention set by `status`:
 
-| Code | Signification |
+| Code | Meaning |
 | --- | --- |
-| `0` | Rien à faire, ou uniquement des mises à jour publiables |
-| `1` | Au moins un paquet refusé |
-| `2` | Erreur de configuration, dépôt injoignable, index corrompu |
+| `0` | Nothing to do, or only publishable updates |
+| `1` | At least one package rejected |
+| `2` | Configuration error, unreachable repository, corrupted index |
 
 ---
 
-## 8. Structure ajoutée
+## 8. Added structure
 
 ```
 fdroid_headwind_mirror/
 ├── fdroid/
-│   ├── client.py       # entry.json, index, diffs, verification sha256
-│   ├── cache.py        # persistance de l'index local
-│   ├── models.py       # modeles pydantic de l'index v2
-│   └── resolver.py     # choix de la version candidate, regroupement par ABI
+│   ├── client.py       # entry.json, index, diffs, sha256 check
+│   ├── cache.py        # persistence of the local index
+│   ├── models.py       # pydantic models of the v2 index
+│   └── resolver.py     # candidate version choice, grouping by ABI
 └── domain/
-    └── planner.py      # confrontation Headwind <-> F-Droid, plan de mise a jour
+    └── planner.py      # Headwind <-> F-Droid comparison, update plan
 ```
 
-`resolver.py` ne connaît ni HTTP ni Headwind : il prend des modèles d'index et rend un candidat. C'est le
-module qui concentre les règles à risque, et il doit être testable sur des cas figés — VLC en tête.
+`resolver.py` knows neither HTTP nor Headwind: it takes index models and returns a candidate. It is the module
+that concentrates the risky rules, and it must be testable on frozen cases — VLC first.
 
 ---
 
 ## 9. Tests
 
-Aucune connexion réseau, conformément à l'itération 1.
+No network connection, in line with iteration 1.
 
-| Domaine | Cas couverts |
+| Area | Cases covered |
 | --- | --- |
-| Fusion de diff | Ajout, modification, suppression par `null`, suppression imbriquée |
-| Client | 304 sur `entry.json`, choix diff/index complet, sha256 divergent, `maxAge` dépassé |
-| Résolution | Paquet pur Java, multi-ABI, splitté (cas VLC réel), ABI ARM absente, signataire absent ou multiple |
-| Épinglage | `NULL` puis capture, conformité, divergence |
-| Planification | À jour, mise à jour disponible, refus, paquet en pause, paquet non résolu dans Headwind |
-| CLI | Sortie texte, sortie JSON, codes de sortie, absence totale d'écriture |
+| Diff merge | Addition, modification, deletion through `null`, nested deletion |
+| Client | 304 on `entry.json`, diff/full index choice, sha256 mismatch, `maxAge` exceeded |
+| Resolution | Pure Java package, multi-ABI, split (real VLC case), missing ARM ABI, missing or multiple signer |
+| Pinning | `NULL` then capture, match, mismatch |
+| Planning | Up to date, update available, rejection, paused package, package not resolved in Headwind |
+| CLI | Text output, JSON output, exit codes, complete absence of writes |
 
-Un extrait réel de l'index est figé comme donnée de test plutôt que reconstruit à la main. Les paquets à
-retenir, tous identifiés dans l'index du 2026-09-16 :
+A real extract of the index is frozen as test data rather than rebuilt by hand. The packages to keep, all
+identified in the index of 2026-09-16:
 
-| Paquet | Intérêt |
+| Package | Interest |
 | --- | --- |
-| `org.videolan.vlc` | Publication par ABI, `versionCode` maximal sur x86_64 |
-| `com.nextcloud.client` | Cas courant, `nativecode` absent ou multi-ABI |
-| `com.shatteredpixel.shatteredpixeldungeon` | Deux signataires distincts selon les versions |
-| `de.schildbach.wallet` | Deux signataires, cas indépendant du précédent |
+| `org.videolan.vlc` | Per-ABI publication, highest `versionCode` on x86_64 |
+| `com.nextcloud.client` | Common case, `nativecode` missing or multi-ABI |
+| `com.shatteredpixel.shatteredpixeldungeon` | Two distinct signers across versions |
+| `de.schildbach.wallet` | Two signers, a case independent of the previous one |
 
-Les deux derniers alimentent le chemin de refus de l'itération 3 : disposer d'un cas authentique évite de
-tester une divergence de signataire sur une donnée inventée.
+The last two feed the rejection path of iteration 3: having a genuine case avoids testing a signer mismatch on
+made-up data.
 
 ---
 
-## 10. Découpage d'implémentation
+## 10. Implementation breakdown
 
-| Étape | Contenu | Vérifiable par |
+| Step | Content | Verifiable through |
 | --- | --- | --- |
-| 2.1 | Modèles pydantic de l'index v2 | Parsing de l'extrait réel figé |
-| 2.2 | Fusion de diff | Tests de la sémantique `null` |
-| 2.3 | Client F-Droid et cache | Tests sur transport simulé |
-| 2.4 | Resolver | Cas VLC, pur Java, multi-ABI, refus |
-| 2.5 | Épinglage du signataire | Transition `NULL` → valeur |
-| 2.6 | `planner` et `sync --dry-run` | Sortie texte et JSON, aucune écriture Headwind |
+| 2.1 | Pydantic models of the v2 index | Parsing of the frozen real extract |
+| 2.2 | Diff merge | Tests of the `null` semantics |
+| 2.3 | F-Droid client and cache | Tests on a simulated transport |
+| 2.4 | Resolver | VLC, pure Java, multi-ABI and rejection cases |
+| 2.5 | Signer pinning | `NULL` → value transition |
+| 2.6 | `planner` and `sync --dry-run` | Text and JSON output, no Headwind write |
 
 ---
 
-## 11. Points à trancher avant de coder
+## 11. Points to settle before coding
 
-1. ~~**ABI du parc.**~~ Tranché : parc homogène `arm64-v8a`, d'où `target_abis: [arm64-v8a]` (§6).
-2. **Emplacement du cache d'index.** Le cache projeté pèse environ 115 ko, mais le rafraîchissement complet
-   demande ~1 Go de mémoire transitoire. `FHM_CACHE_DIR` reste à fixer explicitement.
-3. **Politique `antiFeatures`.** Vide par défaut (§6). À confirmer, ou à renseigner si une politique
-   d'entreprise existe déjà sur le sujet.
+1. ~~**ABI of the fleet.**~~ Settled: the fleet is uniformly `arm64-v8a`, hence `target_abis: [arm64-v8a]`
+   (§6).
+2. **Location of the index cache.** The projected cache weighs about 115 kB, but the full refresh needs ~1 GB
+   of transient memory. `FHM_CACHE_DIR` remains to be set explicitly.
+3. **`antiFeatures` policy.** Empty by default (§6). To be confirmed, or filled in if a corporate policy already
+   exists on the subject.
