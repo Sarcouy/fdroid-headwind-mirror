@@ -71,7 +71,7 @@ def resolve(
 
     if not stable:
         return _rejected(
-            pkg, RejectionReason.NO_VERSION, "aucune version stable publiee", skipped, []
+            pkg, RejectionReason.NO_VERSION, "no stable version published", skipped, []
         )
 
     allowed = [version for version in stable if not blocked & set(version.anti_features)]
@@ -81,7 +81,7 @@ def resolve(
         return _rejected(
             pkg,
             RejectionReason.ANTI_FEATURE,
-            "toutes les versions stables portent une anti-fonctionnalite bloquee",
+            "every stable version carries a blocked anti-feature",
             skipped,
             [],
         )
@@ -91,7 +91,7 @@ def resolve(
         return _rejected(
             pkg,
             RejectionReason.NO_USABLE_SIGNER,
-            "signataire absent ou de cardinalite differente de 1",
+            "signer missing or of a cardinality other than 1",
             skipped,
             available,
         )
@@ -103,8 +103,8 @@ def resolve(
         return _rejected(
             pkg,
             RejectionReason.NO_TARGET_ABI,
-            f"aucune version pour {', '.join(target_abis)}"
-            f" (disponibles: {', '.join(available) or 'aucune'})",
+            f"no version for {', '.join(target_abis)}"
+            f" (available: {', '.join(available) or 'none'})",
             skipped,
             available,
         )

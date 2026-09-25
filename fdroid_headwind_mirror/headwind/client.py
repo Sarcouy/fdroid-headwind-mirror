@@ -119,7 +119,7 @@ class HeadwindClient:
         path = f"/private/applications/version/{version_id}/configurations"
         payload = self._get(path)
         if not isinstance(payload, list) or any(not isinstance(item, dict) for item in payload):
-            raise HeadwindApiError(ResponseStatus.OK, "liste de configurations attendue", path)
+            raise HeadwindApiError(ResponseStatus.OK, "list of configurations expected", path)
         return payload
 
     def link_version_configurations(
@@ -158,11 +158,11 @@ class HeadwindClient:
         try:
             payload = response.json()
         except ValueError as exc:
-            raise HeadwindTransportError(f"{_LOGIN_PATH}: reponse non JSON") from exc
+            raise HeadwindTransportError(f"{_LOGIN_PATH}: non-JSON response") from exc
 
         token = payload.get("id_token") if isinstance(payload, dict) else None
         if not isinstance(token, str) or not token:
-            raise HeadwindTransportError(f"{_LOGIN_PATH}: jeton absent de la reponse")
+            raise HeadwindTransportError(f"{_LOGIN_PATH}: token missing from the response")
 
         self._client.headers["Authorization"] = f"Bearer {token}"
         self._authenticated = True
@@ -181,14 +181,14 @@ class HeadwindClient:
         try:
             envelope = response.json()
         except ValueError as exc:
-            raise HeadwindTransportError(f"{path}: reponse non JSON") from exc
+            raise HeadwindTransportError(f"{path}: non-JSON response") from exc
 
         return self._unwrap(envelope, path)
 
     @staticmethod
     def _unwrap(envelope: Any, path: str) -> Any:
         if not isinstance(envelope, dict):
-            raise HeadwindTransportError(f"{path}: enveloppe inattendue")
+            raise HeadwindTransportError(f"{path}: unexpected envelope")
 
         raw_status = envelope.get("status")
         message = envelope.get("message")
@@ -204,8 +204,8 @@ class HeadwindClient:
     @staticmethod
     def _parse(model: type[T] | Any, payload: Any, path: str) -> T:
         if payload is None:
-            raise HeadwindApiError(ResponseStatus.OK, "data absent", path)
+            raise HeadwindApiError(ResponseStatus.OK, "data missing", path)
         try:
             return TypeAdapter(model).validate_python(payload)
         except ValidationError as exc:
-            raise HeadwindApiError(ResponseStatus.OK, f"reponse illisible: {exc}", path) from exc
+            raise HeadwindApiError(ResponseStatus.OK, f"unreadable response: {exc}", path) from exc

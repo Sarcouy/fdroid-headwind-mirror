@@ -25,7 +25,7 @@ def fetch_devices(base_url: str, login: str, password: str) -> list[dict[str, An
             "/public/jwt/login", json={"login": login, "password": password_digest(password)}
         )
         if response.status_code == httpx.codes.UNAUTHORIZED:
-            raise SystemExit("Identifiants refuses par Headwind")
+            raise SystemExit("Credentials refused by Headwind")
         response.raise_for_status()
         client.headers["Authorization"] = f"Bearer {response.json()['id_token']}"
 
@@ -36,7 +36,7 @@ def fetch_devices(base_url: str, login: str, password: str) -> list[dict[str, An
             response.raise_for_status()
             envelope = response.json()
             if envelope.get("status") != "OK":
-                raise SystemExit(f"Headwind a refuse la requete: {envelope.get('message')}")
+                raise SystemExit(f"Headwind refused the request: {envelope.get('message')}")
             batch = _extract_items(envelope.get("data"))
             devices.extend(batch)
             if len(batch) < PAGE_SIZE:
@@ -80,14 +80,14 @@ def summarise(devices: list[dict[str, Any]]) -> tuple[Counter[str], Counter[str]
 
 def render(devices: list[dict[str, Any]]) -> None:
     models, versions = summarise(devices)
-    print(f"Appareils enroles: {len(devices)}\n")
+    print(f"Enrolled devices: {len(devices)}\n")
 
-    print("Modeles:")
+    print("Models:")
     width = max((len(name) for name in models), default=0)
     for name, count in models.most_common():
         print(f"  {name.ljust(width)}  {count}")
 
-    print("\nVersions Android:")
+    print("\nAndroid versions:")
     width = max((len(name) for name in versions), default=0)
     for name, count in sorted(versions.items(), key=lambda item: item[0]):
         print(f"  {name.ljust(width)}  {count}")
@@ -99,12 +99,12 @@ def main() -> None:
     password = os.environ.get("FHM_HEADWIND_PASSWORD")
     if not base_url or not login or not password:
         raise SystemExit(
-            "FHM_HEADWIND_URL, FHM_HEADWIND_LOGIN et FHM_HEADWIND_PASSWORD doivent etre definis"
+            "FHM_HEADWIND_URL, FHM_HEADWIND_LOGIN and FHM_HEADWIND_PASSWORD must be set"
         )
     try:
         devices = fetch_devices(base_url, login, password)
     except httpx.HTTPError as exc:
-        raise SystemExit(f"Headwind injoignable: {exc}") from exc
+        raise SystemExit(f"Headwind unreachable: {exc}") from exc
     render(devices)
 
 

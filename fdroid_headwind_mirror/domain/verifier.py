@@ -59,7 +59,7 @@ def _verify_package(
         except FDroidError as exc:
             artifact.verified = False
             entry.status = PlanStatus.REJECTED
-            entry.detail = f"APK non verifiable ({artifact.abi}): {exc}"
+            entry.detail = f"APK cannot be verified ({artifact.abi}): {exc}"
             summary.failed += 1
             repository.record_event(run_id, "ERROR", "apk.integrity", entry.detail, pkg=entry.pkg)
             return
@@ -77,6 +77,6 @@ def _verify_package(
         run_id,
         "INFO",
         "apk.verified",
-        f"{len(entry.artifacts)} APK verifie(s) pour la version {entry.candidate_version_code}",
+        f"{len(entry.artifacts)} APK(s) verified for version {entry.candidate_version_code}",
         pkg=entry.pkg,
     )

@@ -175,7 +175,7 @@ def test_corrupted_apk_rejects_the_package(stub: FDroidStub, tmp_path: Path) -> 
 
     entry = payload["packages"][0]
     assert entry["status"] == "REJECTED"
-    assert "sha256 divergente" in entry["detail"]
+    assert "sha256 hash mismatch" in entry["detail"]
     assert entry["artifacts"][0]["verified"] is False
     assert payload["verification"]["failed"] == 1
     assert not (tmp_path / "cache" / "apk" / "org.exemple.verif" / "42-arm64-v8a.apk").exists()
@@ -187,7 +187,7 @@ def test_corrupted_apk_sets_exit_code_one(stub: FDroidStub) -> None:
     result = runner.invoke(cli.app, ["sync", "--verify-apk"])
 
     assert result.exit_code == 1
-    assert "REFUS" in result.stdout
+    assert "REJECTED" in result.stdout
 
 
 @pytest.mark.usefixtures("stub")

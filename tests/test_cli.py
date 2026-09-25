@@ -65,7 +65,7 @@ def test_status_reports_resolved_and_missing(
 
     assert result.exit_code == 1
     assert "org.example.app" in result.stdout
-    assert "ABSENT DE HEADWIND" in result.stdout
+    assert "NOT IN HEADWIND" in result.stdout
     assert (workspace / "state.db").exists()
 
 
@@ -107,7 +107,7 @@ def test_status_fails_cleanly_when_headwind_is_unreachable(
     result = runner.invoke(cli.app, ["status"])
 
     assert result.exit_code == 2
-    assert "Headwind injoignable" in result.stderr
+    assert "Headwind unreachable" in result.stderr
 
 
 @pytest.mark.usefixtures("workspace")
@@ -122,8 +122,8 @@ def test_status_reports_permission_denied_distinctly(
     result = runner.invoke(cli.app, ["status"])
 
     assert result.exit_code == 2
-    assert "Acces refuse" in result.stderr
-    assert "injoignable" not in result.stderr
+    assert "Access denied" in result.stderr
+    assert "unreachable" not in result.stderr
 
 
 def test_status_fails_cleanly_on_invalid_packages_file(
@@ -135,7 +135,7 @@ def test_status_fails_cleanly_on_invalid_packages_file(
     result = runner.invoke(cli.app, ["status"])
 
     assert result.exit_code == 2
-    assert "invalide" in result.stderr
+    assert "invalid" in result.stderr
 
 
 @pytest.mark.usefixtures("workspace")
@@ -151,9 +151,9 @@ def test_status_reports_ambiguity(monkeypatch: pytest.MonkeyPatch) -> None:
     result = runner.invoke(cli.app, ["status"])
 
     assert result.exit_code == 1
-    assert "AMBIGU" in result.stdout
-    assert "candidat #7" in result.stdout
-    assert "candidat #9" in result.stdout
+    assert "AMBIGUOUS" in result.stdout
+    assert "candidate #7" in result.stdout
+    assert "candidate #9" in result.stdout
 
 
 @pytest.mark.usefixtures("workspace")
@@ -178,4 +178,4 @@ def test_status_reports_refused_credentials_distinctly(
 
     assert result.exit_code == 2
     assert "FHM_HEADWIND_PASSWORD" in result.stderr
-    assert "injoignable" not in result.stderr
+    assert "unreachable" not in result.stderr

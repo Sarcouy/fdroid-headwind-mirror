@@ -230,7 +230,7 @@ def test_corrupted_index_is_rejected(repo: Repo, tmp_path: Path) -> None:
         return httpx.Response(200, content=b'{"packages": {"falsifie": {}}}')
 
     with FDroidClient(REPO, transport=httpx.MockTransport(handler)) as client:
-        with pytest.raises(FDroidIntegrityError, match="sha256 divergente"):
+        with pytest.raises(FDroidIntegrityError, match="sha256 hash mismatch"):
             refresh_index(client, IndexCache(tmp_path / "index.json"), ["org.a"])
 
 

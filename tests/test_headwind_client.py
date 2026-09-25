@@ -204,5 +204,5 @@ def test_a_login_without_token_is_reported_as_such() -> None:
         return httpx.Response(200, json={"unexpected": "shape"})
 
     with authenticating_client(handler) as client:
-        with pytest.raises(HeadwindTransportError, match="jeton absent"):
+        with pytest.raises(HeadwindTransportError, match="token missing"):
             client.list_applications()

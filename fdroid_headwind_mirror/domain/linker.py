@@ -93,7 +93,7 @@ def _link_one(
 ) -> LinkingEntry:
     version_code = tracked.last_created_version_code
     if not tracked.auto_approve:
-        detail = "approbation manuelle requise, rattachement non effectue"
+        detail = "manual approval required, linking not performed"
         repository.record_event(run_id, "WARNING", "link.awaiting_approval", detail, pkg=entry.pkg)
         return LinkingEntry(
             pkg=entry.pkg,
@@ -104,7 +104,7 @@ def _link_one(
 
     application_id = entry.application_id or tracked.hmdm_application_id
     if application_id is None or version_code is None:
-        return _failed(entry, version_code, "application Headwind inconnue", repository, run_id)
+        return _failed(entry, version_code, "unknown Headwind application", repository, run_id)
 
     target = _resolve_target(application_id, version_code, client)
     if isinstance(target, str):
@@ -118,10 +118,10 @@ def _link_one(
     try:
         client.link_version_configurations(version_id, configurations)
     except HeadwindError as exc:
-        return _failed(entry, version_code, f"rattachement refuse: {exc}", repository, run_id)
+        return _failed(entry, version_code, f"linking refused: {exc}", repository, run_id)
 
     repository.set_version_progress(entry.pkg, last_pushed_version_code=version_code)
-    detail = f"{targets} configuration(s) rattachee(s), notification demandee"
+    detail = f"{targets} configuration(s) linked, notification requested"
     repository.record_event(run_id, "INFO", "link.done", detail, pkg=entry.pkg)
     return LinkingEntry(
         pkg=entry.pkg,
@@ -140,7 +140,7 @@ def _resolve_target(
     try:
         version_id = _resolve_version_id(application_id, version_code, client)
         if version_id is None:
-            return f"version {version_code} introuvable dans Headwind"
+            return f"version {version_code} not found in Headwind"
         installing = {
             link.configuration_id
             for link in client.get_application_configurations(application_id)
@@ -148,7 +148,7 @@ def _resolve_target(
         }
         return version_id, _links_to_send(client.get_version_configurations(version_id), installing)
     except HeadwindError as exc:
-        return f"liens illisibles: {exc}"
+        return f"unreadable links: {exc}"
 
 
 def _links_to_send(candidates: list[dict[str, Any]], installing: set[int]) -> list[dict[str, Any]]:
@@ -187,7 +187,7 @@ def _nothing_to_link(
     # The progress is recorded even though nothing was done: otherwise the package would stay
     # reported as pending on every run, for a state already reached.
     repository.set_version_progress(entry.pkg, last_pushed_version_code=version_code)
-    detail = "aucune configuration n'installe cette application"
+    detail = "no configuration installs this application"
     repository.record_event(run_id, "INFO", "link.nothing", detail, pkg=entry.pkg)
     return LinkingEntry(
         pkg=entry.pkg,
