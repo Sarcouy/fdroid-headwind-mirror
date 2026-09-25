@@ -1,15 +1,15 @@
 [project]
 name = "fdroid-headwind-mirror"
 version = "0.3.0"
-description = "Synchronise les mises à jour d'applications F-Droid vers Headwind MDM"
+description = "Synchronise F-Droid application updates to Headwind MDM"
 requires-python = ">=3.12,<4.0"
 dependencies = [
     "httpx (>=0.28,<0.29)",
     "pydantic (>=2.10,<3.0)",
     "pydantic-settings (>=2.7,<3.0)",
     "typer (>=0.15,<0.16)",
-    # click 8.2 supprime CliRunner(mix_stderr=...), dont depend la separation
-    # stdout/stderr verifiee par les tests de la CLI.
+    # click 8.2 removes CliRunner(mix_stderr=...), on which the stdout/stderr
+    # separation checked by the CLI tests depends.
     "click (>=8.1,<8.2)",
     "structlog (>=24.4,<25.0)",
     "pyyaml (>=6.0,<7.0)",
@@ -39,16 +39,16 @@ target-version = ["py312"]
 testpaths = ["tests"]
 
 [tool.pylint.main]
-# Le motif doit couvrir le chemin relatif comme absolu: en CI le repertoire de travail
-# est absolu, et un motif ancre sur ".venv" en debut de chaine n'y correspond plus.
+# The pattern must cover the relative path as well as the absolute one: in CI the working
+# directory is absolute, and a pattern anchored on ".venv" at the start no longer matches.
 ignore-paths = ["(^|.*/)\\.venv/.*$"]
 
 [tool.pylint.format]
 max-line-length = 100
 
-# La couche d'acces aux donnees expose une methode par ecriture, dont les parametres
-# reflettent les colonnes de la table. Les parametres au-dela du premier sont
-# keyword-only, ce qui garde les appels lisibles malgre leur nombre.
+# The data access layer exposes one method per write, whose parameters mirror the
+# columns of the table. The parameters after the first one are keyword-only, which
+# keeps the calls readable despite their number.
 [tool.pylint.design]
 max-args = 8
 

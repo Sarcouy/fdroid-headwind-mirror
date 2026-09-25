@@ -1,5 +1,5 @@
 [Unit]
-Description=Synchronise les mises a jour F-Droid vers Headwind MDM
+Description=Synchronise F-Droid updates to Headwind MDM
 Documentation=https://github.com/Sarcouy/fdroid-headwind-mirror
 After=network-online.target
 Wants=network-online.target
@@ -9,17 +9,17 @@ Type=oneshot
 User=fdroid-headwind-mirror
 Group=fdroid-headwind-mirror
 
-# Les chemins par defaut de packages.yaml, state.db et .cache sont relatifs:
-# sans WorkingDirectory le service les cherche ailleurs qu'ou ils se trouvent.
+# The default paths of packages.yaml, state.db and .cache are relative:
+# without WorkingDirectory the service looks for them elsewhere than where they are.
 WorkingDirectory=/var/lib/fdroid-headwind-mirror
 
-# FHM_HEADWIND_PASSWORD vit dans ce fichier, lisible du seul utilisateur de service
-# (chmod 600). Ne jamais ecrire le secret dans l'unite: elle est lisible par tous.
+# FHM_HEADWIND_PASSWORD lives in this file, readable by the service user only
+# (chmod 600). Never write the secret into the unit: it is world-readable.
 EnvironmentFile=/etc/fdroid-headwind-mirror/env
 
 ExecStart=/opt/fdroid-headwind-mirror/.venv/bin/fhm sync --apply
 
-# Le service n'ecrit que dans son repertoire de travail et ne sert aucun socket.
+# The service only writes to its working directory and serves no socket.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

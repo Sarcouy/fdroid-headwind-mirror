@@ -1,14 +1,14 @@
 [Unit]
-Description=Declenchement quotidien de la synchronisation F-Droid vers Headwind MDM
+Description=Daily trigger of the F-Droid to Headwind MDM synchronisation
 
 [Timer]
 OnCalendar=daily
 
-# Etale les appels a f-droid.org: un parc de services declenchant tous a minuit
-# pile concentre inutilement la charge sur le depot.
+# Spreads the calls to f-droid.org: a fleet of services all triggering at midnight
+# sharp needlessly concentrates the load on the repository.
 RandomizedDelaySec=2h
 
-# Rattrape l'execution si la machine etait eteinte a l'heure prevue.
+# Catches up on the run if the machine was off at the scheduled time.
 Persistent=true
 
 Unit=fdroid-headwind-mirror.service
